@@ -1,0 +1,53 @@
+{% extends "base_email.html" %}
+
+{% block content %}
+<div class="badge">J - 15</div>
+
+<h2>Bonjour {{ visitor_name }} ! 👋</h2>
+
+<p>
+  Excellente nouvelle — <strong>{{ event_name }}</strong> commence dans
+  <strong>15 jours</strong> et votre place est réservée !
+</p>
+
+<p>
+  C'est le moment idéal pour planifier votre visite, prendre connaissance
+  du programme et préparer vos rendez-vous B2B.
+</p>
+
+<!-- Event details box -->
+<div class="info-box">
+  {% if event_dates %}
+  <div class="info-row">
+    <span class="info-label">📅 Dates</span>
+    <span class="info-value">{{ event_dates }}</span>
+  </div>
+  {% endif %}
+  {% if event_venue %}
+  <div class="info-row">
+    <span class="info-label">📍 Lieu</span>
+    <span class="info-value">{{ event_venue }}{% if event_city %}, {{ event_city }}{% endif %}</span>
+  </div>
+  {% endif %}
+</div>
+
+<p><strong>Ce que vous pouvez faire dès maintenant :</strong></p>
+<ul>
+  <li>📋 Consulter le programme complet des conférences</li>
+  <li>🤝 Planifier vos rendez-vous avec les exposants</li>
+  <li>🏨 Réserver votre hébergement si nécessaire</li>
+  <li>🎤 Vous inscrire aux sessions qui vous intéressent</li>
+</ul>
+
+<div class="btn-wrap">
+  <a href="{{ event_url | default('#') }}" class="btn">
+    Voir le programme complet →
+  </a>
+</div>
+
+<hr class="divider" />
+<p style="font-size:13px; color:#6b7280; text-align:center;">
+  Des questions ? Contactez-nous à
+  <a href="mailto:events@aieventos.ma">events@aieventos.ma</a>
+</p>
+{% endblock %}

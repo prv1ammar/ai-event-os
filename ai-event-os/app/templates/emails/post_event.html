@@ -1,0 +1,61 @@
+{% extends "base_email.html" %}
+
+{% block content %}
+<div class="badge">MERCI !</div>
+
+<h2>{{ visitor_name }}, merci d'avoir participé ! 🙏</h2>
+
+<p>
+  <strong>{{ event_name }}</strong> est maintenant terminé.
+  Nous espérons que vous avez vécu une expérience enrichissante et
+  que vous avez pu nouer de nombreux contacts professionnels.
+</p>
+
+<div class="info-box">
+  {% if event_dates %}
+  <div class="info-row">
+    <span class="info-label">📅 Édition</span>
+    <span class="info-value">{{ event_dates }}</span>
+  </div>
+  {% endif %}
+  {% if event_venue %}
+  <div class="info-row">
+    <span class="info-label">📍 Lieu</span>
+    <span class="info-value">{{ event_venue }}{% if event_city %}, {{ event_city }}{% endif %}</span>
+  </div>
+  {% endif %}
+</div>
+
+<p><strong>Après l'événement :</strong></p>
+<ul>
+  <li>📸 Les photos et vidéos seront disponibles sur notre site</li>
+  <li>📄 Les présentations des conférenciers sont téléchargeables</li>
+  <li>🤝 Retrouvez vos contacts B2B dans votre espace personnel</li>
+  <li>📊 Consultez le rapport de leads collectés lors de l'événement</li>
+</ul>
+
+<p>
+  Votre avis nous est précieux ! Partagez votre expérience en remplissant
+  notre questionnaire de satisfaction — cela ne prend que 2 minutes.
+</p>
+
+<div class="btn-wrap">
+  <a href="{{ survey_url | default('#') }}" class="btn">
+    Donner mon avis →
+  </a>
+</div>
+
+<hr class="divider" />
+
+<p style="text-align:center; color:#374151;">
+  Rendez-vous à la <strong>prochaine édition</strong> ! 🎯<br />
+  Suivez-nous pour les annonces :
+  <a href="https://linkedin.com" target="_blank">LinkedIn</a> ·
+  <a href="https://twitter.com" target="_blank">Twitter/X</a>
+</p>
+
+<hr class="divider" />
+<p style="font-size:13px; color:#6b7280; text-align:center;">
+  <a href="mailto:events@aieventos.ma">events@aieventos.ma</a>
+</p>
+{% endblock %}

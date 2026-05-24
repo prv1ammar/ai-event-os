@@ -1,0 +1,55 @@
+{% extends "base_email.html" %}
+
+{% block content %}
+<div class="badge">DEMAIN !</div>
+
+<h2>{{ visitor_name }}, c'est demain — êtes-vous prêt ? 🎉</h2>
+
+<p>
+  <strong>{{ event_name }}</strong> commence <strong>demain</strong> !
+  Voici votre récapitulatif de dernière minute.
+</p>
+
+<div class="info-box">
+  {% if event_dates %}
+  <div class="info-row">
+    <span class="info-label">📅 Dates</span>
+    <span class="info-value"><strong>{{ event_dates }}</strong></span>
+  </div>
+  {% endif %}
+  {% if event_venue %}
+  <div class="info-row">
+    <span class="info-label">📍 Adresse</span>
+    <span class="info-value"><strong>{{ event_venue }}{% if event_city %}, {{ event_city }}{% endif %}</strong></span>
+  </div>
+  {% endif %}
+  <div class="info-row">
+    <span class="info-label">⏰ Accueil</span>
+    <span class="info-value">Dès 08h30 — présentez votre QR code à l'entrée</span>
+  </div>
+</div>
+
+<p><strong>Rappel express J-1 ⚡</strong></p>
+<ul>
+  <li>📱 Ayez votre <strong>billet QR</strong> accessible hors ligne</li>
+  <li>💼 Apportez vos cartes de visite et supports</li>
+  <li>🤝 Vos rendez-vous B2B sont confirmés — consultez votre agenda</li>
+  <li>🅿️ Prévoir du temps pour le stationnement si vous venez en voiture</li>
+</ul>
+
+<p style="background:#fef9c3; padding:12px 16px; border-radius:6px; font-size:14px;">
+  🌟 <strong>Conseil :</strong> Téléchargez l'application AI EVENT OS
+  pour suivre le programme en temps réel et recevoir des notifications.
+</p>
+
+<div class="btn-wrap">
+  <a href="{{ event_url | default('#') }}" class="btn">
+    Mon billet &amp; programme →
+  </a>
+</div>
+
+<hr class="divider" />
+<p style="font-size:13px; color:#6b7280; text-align:center;">
+  Urgence J-1 ? <a href="mailto:events@aieventos.ma">events@aieventos.ma</a> · Tél. +212 522 XXX XXX
+</p>
+{% endblock %}
