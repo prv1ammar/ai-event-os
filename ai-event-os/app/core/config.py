@@ -26,8 +26,13 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = True
 
-    # ── Database ───────────────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://aievent:aievent_pass@postgres:5432/aievent_db"
+    # ── TybotFlow SmartApp ─────────────────────────────────────────────────────
+    TYBOT_API_URL: str = "https://api.tybotflow.com"
+    TYBOT_API_KEY: str = ""
+    TYBOT_BASE_ID: str = ""
+
+    # ── Database (optional fallback) ───────────────────────────────────────────
+    DATABASE_URL: str = ""
 
     # ── Redis / Celery ─────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://redis:6379/0"

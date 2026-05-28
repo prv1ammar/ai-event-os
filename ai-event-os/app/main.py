@@ -51,9 +51,9 @@ from app.websockets.dashboard_ws import create_dashboard_ws_router
 async def lifespan(app: FastAPI):
     """Run startup tasks before first request, cleanup on shutdown."""
     # Future: warm up Redis connection pool, verify DB, etc.
-    print(f"🚀  {settings.APP_NAME} v{settings.APP_VERSION} starting up…")
+    print(f"[START]  {settings.APP_NAME} v{settings.APP_VERSION} starting up...")
     yield
-    print(f"🛑  {settings.APP_NAME} shutting down…")
+    print(f"[STOP]  {settings.APP_NAME} shutting down...")
 
 
 # ── Application factory ────────────────────────────────────────────────────────

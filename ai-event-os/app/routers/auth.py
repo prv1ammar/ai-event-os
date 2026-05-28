@@ -1,160 +1,87 @@
 """
 app/routers/auth.py
 ───────────────────
-Authentication endpoints:
-  POST /api/v1/auth/register  → create account, return tokens
-  POST /api/v1/auth/login     → OAuth2 password grant, return tokens
-  POST /api/v1/auth/refresh   → rotate access token
-  GET  /api/v1/auth/me        → current user profile
+Authentication via TybotFlow SmartApp API.
+  POST /api/v1/auth/login  → validate via TybotFlow, issue our own JWT
+  GET  /api/v1/auth/me     → current user from our token
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
-from app.core.security import (
-    create_access_token,
-    create_refresh_token,
-    get_current_user,
-    hash_password,
-    verify_password,
-    verify_token,
-    TOKEN_TYPE_REFRESH,
-)
-from app.models.user import User
-from app.schemas.auth import (
-    AuthResponse,
-    RefreshRequest,
-    RegisterRequest,
-    TokenResponse,
-    UserResponse,
-)
+from app.core.tybot_client import TybotClient, get_tybot
+from app.core.security import create_access_token, get_current_user_payload
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
-
-# ── Helper ─────────────────────────────────────────────────────────────────────
-
-def _build_token_pair(user: User) -> dict:
-    payload = {"sub": str(user.id), "role": user.role}
-    return {
-        "access_token": create_access_token(payload),
-        "refresh_token": create_refresh_token(payload),
-        "token_type": "bearer",
-    }
-
-
-# ── POST /register ─────────────────────────────────────────────────────────────
-
-@router.post(
-    "/register",
-    response_model=AuthResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="Register a new user account",
-)
-async def register(
-    body: RegisterRequest,
-    db: AsyncSession = Depends(get_db),
-) -> AuthResponse:
-    # Check duplicate email
-    result = await db.execute(select(User).where(User.email == body.email))
-    if result.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists",
-        )
-
-    user = User(
-        email=body.email,
-        hashed_password=hash_password(body.password),
-        full_name=body.full_name,
-        role=body.role,
-        is_active=True,
-    )
-    db.add(user)
-    await db.flush()   # get the auto-generated UUID without committing yet
-    await db.refresh(user)
-
-    tokens = _build_token_pair(user)
-    return AuthResponse(
-        **tokens,
-        user=UserResponse.model_validate(user),
-    )
+_DEMO_USERS = {
+    "admin@aievent.ma": {
+        "password": "Admin1234!",
+        "id": "demo-admin-001",
+        "first_name": "Admin",
+        "last_name": "AI Event",
+        "role": "admin",
+        "is_active": True,
+    },
+}
 
 
-# ── POST /login (OAuth2 form) ─────────────────────────────────────────────────
-
-@router.post(
-    "/login",
-    response_model=AuthResponse,
-    summary="Login with email + password (OAuth2 form)",
-)
+@router.post("/login", summary="Login via TybotFlow")
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db),
-) -> AuthResponse:
-    result = await db.execute(select(User).where(User.email == form_data.username))
-    user: User | None = result.scalar_one_or_none()
+    tybot: TybotClient = Depends(get_tybot),
+):
+    # Demo bypass — works without TybotFlow credentials
+    demo = _DEMO_USERS.get(form_data.username)
+    if demo and form_data.password == demo["password"]:
+        token_payload = {
+            "sub": demo["id"],
+            "email": form_data.username,
+            "role": demo["role"],
+            "first_name": demo["first_name"],
+            "last_name": demo["last_name"],
+        }
+        access_token = create_access_token(data=token_payload)
+        user_data = {k: v for k, v in demo.items() if k != "password"}
+        user_data["email"] = form_data.username
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "userData": user_data,
+            "tybot_response": {},
+        }
 
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    try:
+        data = await tybot.login(form_data.username, form_data.password)
+    except Exception:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is disabled. Contact support.",
-        )
 
-    tokens = _build_token_pair(user)
-    return AuthResponse(
-        **tokens,
-        user=UserResponse.model_validate(user),
-    )
+    # Extract user info from TybotFlow response
+    user_data = data.get("userData") or data.get("user") or {}
+    user_id = str(user_data.get("id") or user_data.get("user_id") or form_data.username)
 
+    # Issue our own JWT so our backend can verify it
+    token_payload = {
+        "sub": user_id,
+        "email": form_data.username,
+        "role": user_data.get("role", "user"),
+        "first_name": user_data.get("firstname") or user_data.get("first_name") or "",
+        "last_name": user_data.get("lastname") or user_data.get("last_name") or "",
+    }
+    access_token = create_access_token(data=token_payload)
 
-# ── POST /refresh ─────────────────────────────────────────────────────────────
-
-@router.post(
-    "/refresh",
-    response_model=TokenResponse,
-    summary="Obtain a new access token using a refresh token",
-)
-async def refresh_token(
-    body: RefreshRequest,
-    db: AsyncSession = Depends(get_db),
-) -> TokenResponse:
-    payload = verify_token(body.refresh_token, expected_type=TOKEN_TYPE_REFRESH)
-    user_id: str = payload.get("sub")
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    user: User | None = result.scalar_one_or_none()
-
-    if not user or not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found or inactive",
-        )
-
-    new_payload = {"sub": str(user.id), "role": user.role}
-    return TokenResponse(
-        access_token=create_access_token(new_payload),
-        refresh_token=create_refresh_token(new_payload),
-    )
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "userData": user_data,
+        "tybot_response": data,
+    }
 
 
-# ── GET /me ────────────────────────────────────────────────────────────────────
-
-@router.get(
-    "/me",
-    response_model=UserResponse,
-    summary="Get current authenticated user profile",
-)
-async def get_me(
-    current_user: User = Depends(get_current_user),
-) -> UserResponse:
-    return UserResponse.model_validate(current_user)
+@router.get("/me", summary="Get current authenticated user")
+async def get_me(payload: dict = Depends(get_current_user_payload)):
+    return payload

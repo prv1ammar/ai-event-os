@@ -1,120 +1,67 @@
 """
-app/routers/speakers.py
-────────────────────────
-FastAPI router — Speaker CRUD and session assignment.
-
-Endpoints:
-  GET    /api/v1/speakers                        list (filter: event_id)
-  POST   /api/v1/speakers                        create speaker
-  GET    /api/v1/speakers/{id}                   detail with assigned sessions
-  PUT    /api/v1/speakers/{id}                   update speaker
-  POST   /api/v1/speakers/{id}/assign            assign speaker to a session
+app/routers/speakers.py — CRUD for speakers via TybotFlow SmartDB
+Table: speakers | ID: m21oa4drniw0c8t
 """
 
-from typing import Optional
-from uuid import UUID
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.tybot_client import TybotClient, get_tybot
+from app.core.security import get_current_user
 
-from app.core.database import get_db
-from app.core.security import get_current_organizer_or_admin, get_current_user
-from app.schemas.speaker import (
-    SpeakerAssignRequest,
-    SpeakerAssignResponse,
-    SpeakerCreate,
-    SpeakerResponse,
-    SpeakerUpdate,
-)
-from app.services import speaker_service
+TABLE = "speakers"
+TABLE_ID = "m21oa4drniw0c8t"
 
 router = APIRouter(prefix="/api/v1/speakers", tags=["Speakers"])
 
 
-# ── GET /api/v1/speakers ──────────────────────────────────────────────────────
-
-@router.get(
-    "",
-    response_model=list[SpeakerResponse],
-    summary="List speakers, optionally filtered by event",
-)
+@router.get("", summary="List speakers")
 async def list_speakers(
-    event_id: Optional[UUID] = Query(None, description="Filter by event UUID"),
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    return await speaker_service.get_all(db, event_id, page, limit)
+    params = {"limit": limit, "offset": (page - 1) * limit}
+    return await tybot.list(TABLE, params)
 
 
-# ── POST /api/v1/speakers ─────────────────────────────────────────────────────
-
-@router.post(
-    "",
-    response_model=SpeakerResponse,
-    status_code=201,
-    summary="Create a new speaker (organizer / admin)",
-)
+@router.post("", status_code=201, summary="Create speaker")
 async def create_speaker(
-    data: SpeakerCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_organizer_or_admin),
-):
-    """Register a speaker for an event.  Session assignment is done separately."""
-    return await speaker_service.create(db, data, current_user)
-
-
-# ── POST /api/v1/speakers/{id}/assign ────────────────────────────────────────
-# Defined BEFORE /{speaker_id} to avoid path confusion.
-
-@router.post(
-    "/{speaker_id}/assign",
-    response_model=SpeakerAssignResponse,
-    status_code=201,
-    summary="Assign a speaker to a session (organizer / admin)",
-)
-async def assign_speaker(
-    speaker_id: UUID,
-    data: SpeakerAssignRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_organizer_or_admin),
-):
-    """
-    Assign an existing speaker to an existing session.
-    Both speaker and session must belong to the **same event**.
-    Operation is idempotent — assigning an already-assigned speaker is a no-op.
-    """
-    result = await speaker_service.assign_to_session(db, speaker_id, data.session_id)
-    return SpeakerAssignResponse(**result)
-
-
-# ── GET /api/v1/speakers/{id} ─────────────────────────────────────────────────
-
-@router.get(
-    "/{speaker_id}",
-    response_model=SpeakerResponse,
-    summary="Get speaker detail with assigned sessions",
-)
-async def get_speaker(
-    speaker_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    data: dict,
+    tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    return await speaker_service.get_by_id(db, speaker_id)
+    return await tybot.create(TABLE_ID, data)
 
 
-# ── PUT /api/v1/speakers/{id} ─────────────────────────────────────────────────
-
-@router.put(
-    "/{speaker_id}",
-    response_model=SpeakerResponse,
-    summary="Update speaker information (organizer / admin)",
-)
-async def update_speaker(
-    speaker_id: UUID,
-    data: SpeakerUpdate,
-    db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_organizer_or_admin),
+@router.get("/{speaker_id}", summary="Get speaker by ID")
+async def get_speaker(
+    speaker_id: int,
+    tybot: TybotClient = Depends(get_tybot),
+    current_user=Depends(get_current_user),
 ):
-    return await speaker_service.update(db, speaker_id, data)
+    record = await tybot.get(TABLE, str(speaker_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Speaker not found")
+    return record
+
+
+@router.patch("/{speaker_id}", summary="Update speaker")
+async def update_speaker(
+    speaker_id: int,
+    data: dict,
+    tybot: TybotClient = Depends(get_tybot),
+    current_user=Depends(get_current_user),
+):
+    data["id"] = speaker_id
+    return await tybot.update(TABLE_ID, data)
+
+
+@router.delete("/{speaker_id}", summary="Delete speaker")
+async def delete_speaker(
+    speaker_id: int,
+    tybot: TybotClient = Depends(get_tybot),
+    current_user=Depends(get_current_user),
+):
+    await tybot.delete(TABLE_ID, str(speaker_id))
+    return {"message": "Deleted"}

@@ -1,6 +1,6 @@
 import { getToken, clearToken } from "./auth";
 
-export const API_BASE = "https://api.tybotflow.com";
+export const API_BASE = "http://localhost:8001";
 export const BASE_ID = "ponz2aspv049r7c";
 
 // Table IDs for the smart-db write API (PATCH / POST / DELETE)
@@ -52,8 +52,6 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
     headers: {
       "Content-Type": "application/json",
       accept: "application/json",
-      "Accept-Profile": BASE_ID,
-      "Content-Profile": BASE_ID,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(options.headers ?? {}),
     },
@@ -76,40 +74,28 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 export interface LoginResponse {
   access_token: string;
   refresh_token: string;
-  role: string;
-  roleId: number;
-  roles: string[];
-  schema: string;
-  schema_id: number;
-  domains: { id: number; name: string; avatar_url: string | null; storage_bucket_name: string; api_key_shorty: string }[];
-  userData: {
-    email: string;
-    first_name: string;
-    last_name: string;
-    username: string;
-    phone: number;
+  token_type: string;
+  user: {
     id: string;
-    schema: string;
-    schema_id: number;
-    is_super_admin: boolean;
+    email: string;
+    full_name: string;
+    role: string;
     is_active: boolean;
-    workspaces: { id: number; name: string }[];
+    event_id: string | null;
   };
 }
 
 export async function loginRequest(email: string, password: string): Promise<LoginResponse> {
+  const body = new URLSearchParams({ username: email, password });
   const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      accept: "application/json",
-    },
-    body: JSON.stringify({ email, password }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.msg || "Email ou mot de passe incorrect.");
+    throw new Error(err.detail || err.message || "Email ou mot de passe incorrect.");
   }
 
   return res.json();

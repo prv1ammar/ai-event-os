@@ -102,35 +102,18 @@ def verify_token(token: str, expected_type: str = TOKEN_TYPE_ACCESS) -> dict:
 
 # ─────────────────────────────── FastAPI dependencies ─────────────────────────
 
+async def get_current_user_payload(
+    token: str = Depends(oauth2_scheme),
+) -> dict:
+    """Decode the Bearer token and return the payload (no DB needed)."""
+    return verify_token(token, expected_type=TOKEN_TYPE_ACCESS)
+
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
-    db: AsyncSession = Depends(get_db),
 ):
-    """
-    FastAPI dependency — resolves the Bearer token to a User ORM object.
-    Inject with: current_user = Depends(get_current_user)
-    """
-    # Import here to avoid circular imports
-    from app.models.user import User
-
-    payload = verify_token(token, expected_type=TOKEN_TYPE_ACCESS)
-    user_id: str = payload.get("sub")
-
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if not user.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Inactive user account",
-        )
-    return user
+    """Return decoded token payload as the current user (TybotFlow mode)."""
+    return verify_token(token, expected_type=TOKEN_TYPE_ACCESS)
 
 
 async def get_current_active_admin(

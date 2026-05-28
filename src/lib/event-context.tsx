@@ -50,8 +50,8 @@ function toActiveEvent(e: RawEvent): ActiveEvent {
 }
 
 async function fetchEvents(): Promise<ActiveEvent[]> {
-  const raw = await apiRequest<RawEvent[] | { list: RawEvent[] }>("/api/v1/data/events");
-  const list = Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<RawEvent[] | { items: RawEvent[] }>("/api/v1/events");
+  const list = Array.isArray(raw) ? raw : (raw.items ?? []);
   return list.map(toActiveEvent);
 }
 
@@ -78,6 +78,8 @@ export function EventProvider({ children }: { children: ReactNode }) {
     queryKey: ["header-events"],
     queryFn: fetchEvents,
     staleTime: 5 * 60 * 1000,
+    retry: false,
+    throwOnError: false,
   });
 
   const defaultEvent =
