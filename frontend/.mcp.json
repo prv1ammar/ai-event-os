@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "tybot": {
+      "url": "https://mcp.tybotflow.com/sse?token=2e4bed94-4417-4e25-afc9-3e3815b88549"
+    }
+  }
+}

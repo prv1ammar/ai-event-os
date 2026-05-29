@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\lenovo\\\\Downloads\\\\eventflow-ai-main\\\\ai-event-os\" -Recurse -Name)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git branch *)",
+      "Bash(git remote *)",
+      "Bash(git push *)",
+      "Bash(git fetch *)",
+      "Bash(git init *)",
+      "Bash(git config *)"
+    ]
+  }
+}

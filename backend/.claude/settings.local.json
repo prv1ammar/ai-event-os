@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Get-ChildItem -Recurse 'C:\\\\Users\\\\lenovo\\\\Downloads\\\\eventflow-ai-main' | Select-Object FullName\")",
+      "Read(//c/Users/lenovo/Downloads/eventflow-ai-main/**)",
+      "Read(//mnt/c/Users/lenovo/Downloads/**)",
+      "Bash(pip --version)",
+      "Bash(python -m pip --version)",
+      "Bash(python -m pip install fastapi==0.111.0 sqlalchemy==2.0.30 alembic==1.13.1 asyncpg==0.29.0 pydantic==2.7.1 pydantic-settings==2.2.1 python-dotenv==1.0.1 python-jose[cryptography]==3.3.0 passlib[bcrypt]==1.7.4 bcrypt==4.1.3 --quiet)",
+      "Bash(docker --version)",
+      "Bash(pg_isready -h localhost -p 5432)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(python -m pytest tests/test_visitors.py tests/test_scans.py -v --tb=short)",
+      "Bash(pip install *)",
+      "Bash(git config *)",
+      "Bash(python -c \"import pytest; print\\('pytest OK', pytest.__version__\\)\")",
+      "Bash(where python *)",
+      "Bash(C:/Users/lenovo/AppData/Local/Programs/Python/Python310/python.exe -m pip install pytest pytest-asyncio httpx aiosqlite qrcode Pillow reportlab pandas openpyxl pydantic pydantic-settings python-jose passlib bcrypt python-multipart sqlalchemy)",
+      "Bash(git *)",
+      "Bash(C:/Users/lenovo/AppData/Local/Programs/Python/Python310/python.exe -m pip install fastapi httpx pydantic-settings python-jose \"passlib[bcrypt]\" python-multipart sqlalchemy)",
+      "Bash(C:/Users/lenovo/AppData/Local/Programs/Python/Python310/python.exe -m pytest tests/test_visitors.py tests/test_scans.py -v --tb=short)",
+      "Bash(C:/Users/lenovo/AppData/Local/Programs/Python/Python310/python.exe -m pytest tests/test_visitors.py tests/test_scans.py -v --tb=short -x)",
+      "Bash(C:/Users/lenovo/AppData/Local/Programs/Python/Python310/python.exe *)",
+      "Bash(python *)",
+      "Bash(del test.db)",
+      "Bash(mkdir -p C:/Users/lenovo/Downloads/eventflow-ai-main/ai-event-os/app/ml/models)",
+      "Bash(touch C:/Users/lenovo/Downloads/eventflow-ai-main/ai-event-os/app/ml/__init__.py)",
+      "Bash(touch C:/Users/lenovo/Downloads/eventflow-ai-main/ai-event-os/app/ml/models/.gitkeep)"
+    ]
+  }
+}
