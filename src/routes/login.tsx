@@ -37,10 +37,13 @@ function LoginPage() {
       const data = await loginRequest(email, password);
       setToken(data.access_token);
       setUser({
-        email: data.user.email,
-        full_name: data.user.full_name,
-        id: data.user.id,
-        role: data.user.role,
+        email: data.userData.email,
+        first_name: data.userData.first_name,
+        last_name: data.userData.last_name,
+        username: data.userData.username,
+        id: data.userData.id,
+        role: data.userData.role,
+        is_active: data.userData.is_active,
       });
       navigate({ to: "/" });
     } catch (err) {

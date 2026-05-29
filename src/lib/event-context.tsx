@@ -50,8 +50,8 @@ function toActiveEvent(e: RawEvent): ActiveEvent {
 }
 
 async function fetchEvents(): Promise<ActiveEvent[]> {
-  const raw = await apiRequest<RawEvent[] | { items: RawEvent[] }>("/api/v1/events");
-  const list = Array.isArray(raw) ? raw : (raw.items ?? []);
+  const raw = await apiRequest<RawEvent[] | { list: RawEvent[] }>("/api/v1/events");
+  const list = Array.isArray(raw) ? raw : (raw.list ?? []);
   return list.map(toActiveEvent);
 }
 

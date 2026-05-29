@@ -3,9 +3,12 @@ const USER_KEY = "aievent_user";
 
 export interface StoredUser {
   email: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
+  username?: string;
   id: string;
-  role: string;
+  role?: string;
+  is_active?: boolean;
 }
 
 export function getToken(): string | null {

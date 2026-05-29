@@ -71,9 +71,9 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const user = getUser();
   const initials = user
-    ? user.full_name.split(" ").map((n) => n[0] ?? "").join("").slice(0, 2).toUpperCase()
+    ? `${user.first_name[0] ?? ""}${user.last_name[0] ?? ""}`.toUpperCase()
     : "?";
-  const fullName = user?.full_name ?? "Utilisateur";
+  const fullName = user ? `${user.first_name} ${user.last_name}` : "Utilisateur";
 
   function handleLogout() {
     clearToken();
