@@ -44,3 +44,6 @@ __pycache__/
 *.sqlite3
 ai-event-os/.venv/
 ai-event-os/venv/
+
+# Vite cache
+.vite/
