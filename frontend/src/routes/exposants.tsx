@@ -59,8 +59,8 @@ interface Exhibitor {
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 async function fetchExhibitors(): Promise<Exhibitor[]> {
-  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>(`/api/v1/data/exhibitors`);
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>(`/api/v1/exhibitors?limit=100`);
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 async function createExhibitor(data: Partial<Exhibitor>): Promise<void> {
