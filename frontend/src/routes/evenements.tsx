@@ -58,7 +58,6 @@ interface Event {
   budget?: string | number;
   language?: string;
   organization_id?: number;
-  slug?: string;
   [key: string]: unknown;
 }
 
@@ -68,16 +67,20 @@ interface NocoDBResponse {
 }
 
 async function fetchEvents(): Promise<NocoDBResponse> {
-  const raw = await apiRequest<Event[] | NocoDBResponse>(`/api/v1/data/events`);
+  const raw = await apiRequest<Event[] | NocoDBResponse>(`/api/v1/events?limit=100`);
   if (Array.isArray(raw)) return { list: raw };
-  return raw;
+  return raw as NocoDBResponse;
 }
 
 interface Organization { id: number; name?: string; [key: string]: unknown }
 
 async function fetchOrganizations(): Promise<Organization[]> {
-  const raw = await apiRequest<Organization[] | { list: Organization[] }>("/api/v1/data/organizations");
-  return Array.isArray(raw) ? raw : raw.list;
+  try {
+    const raw = await apiRequest<Organization[] | { list: Organization[] }>("/api/v1/events?limit=100");
+    return Array.isArray(raw) ? raw : ((raw as { list: Organization[] }).list ?? []);
+  } catch {
+    return [];
+  }
 }
 
 async function createEvent(data: Partial<Event>): Promise<void> {

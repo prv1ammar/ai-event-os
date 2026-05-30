@@ -44,18 +44,18 @@ interface VisitorRecord { id: number; [key: string]: unknown }
 interface ExhibitorRecord { id: number; [key: string]: unknown }
 
 async function fetchVisitors(): Promise<VisitorRecord[]> {
-  const raw = await apiRequest<VisitorRecord[] | { list: VisitorRecord[] }>("/api/v1/data/visitors");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<VisitorRecord[] | { list: VisitorRecord[] }>("/api/v1/visitors?limit=500");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 async function fetchLeads(): Promise<LeadRecord[]> {
-  const raw = await apiRequest<LeadRecord[] | { list: LeadRecord[] }>("/api/v1/data/leads");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<LeadRecord[] | { list: LeadRecord[] }>("/api/v1/leads?limit=500");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 async function fetchExhibitors(): Promise<ExhibitorRecord[]> {
-  const raw = await apiRequest<ExhibitorRecord[] | { list: ExhibitorRecord[] }>("/api/v1/data/exhibitors");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<ExhibitorRecord[] | { list: ExhibitorRecord[] }>("/api/v1/exhibitors?limit=100");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 const radarData = [

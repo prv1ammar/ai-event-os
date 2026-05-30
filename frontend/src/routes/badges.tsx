@@ -35,8 +35,8 @@ interface Badge {
 }
 
 async function fetchBadges(): Promise<Badge[]> {
-  const raw = await apiRequest<Badge[] | { list: Badge[] }>("/api/v1/data/badges");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<Badge[] | { list: Badge[] }>("/api/v1/badges?limit=500");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 type BadgeType = "VISITEUR" | "VIP" | "PRESSE" | "EXPOSANT" | "ORGANISATEUR";
