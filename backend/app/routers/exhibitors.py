@@ -1,9 +1,11 @@
 """
 app/routers/exhibitors.py — CRUD for exhibitors via TybotFlow SmartDB
 Table: exhibitors | ID: mrdg571gqvhuiz0
+
+event_ids is a comma-separated text field, e.g. "1,4,5"
+One exhibitor can belong to multiple events.
 """
 
-import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.tybot_client import TybotClient, get_tybot
@@ -11,9 +13,13 @@ from app.core.security import get_current_user
 
 TABLE = "exhibitors"
 TABLE_ID = "mrdg571gqvhuiz0"
-JUNCTION_TABLE = "event_exhibitors"
 
 router = APIRouter(prefix="/api/v1/exhibitors", tags=["Exhibitors"])
+
+
+def _has_event(row: dict, event_id: int) -> bool:
+    raw = row.get("event_ids") or ""
+    return str(event_id) in [v.strip() for v in str(raw).split(",") if v.strip()]
 
 
 @router.get("", summary="List exhibitors")
@@ -24,16 +30,9 @@ async def list_exhibitors(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
+    rows = await tybot.list(TABLE, {"limit": 500})
     if event_id is not None:
-        # Use junction table: get exhibitor_ids for this event, then filter
-        links, all_exhibitors = await asyncio.gather(
-            tybot.list(JUNCTION_TABLE, {"limit": 500}),
-            tybot.list(TABLE, {"limit": 500}),
-        )
-        assigned_ids = {lnk.get("exhibitor_id") for lnk in links if lnk.get("event_id") == event_id}
-        rows = [e for e in all_exhibitors if e.get("id") in assigned_ids]
-    else:
-        rows = await tybot.list(TABLE, {"limit": 500})
+        rows = [r for r in rows if _has_event(r, event_id)]
     start = (page - 1) * limit
     return rows[start : start + limit]
 
@@ -68,6 +67,45 @@ async def update_exhibitor(
 ):
     data["id"] = exhibitor_id
     return await tybot.update(TABLE_ID, data)
+
+
+@router.post("/{exhibitor_id}/assign-event", summary="Assign exhibitor to an event")
+async def assign_event(
+    exhibitor_id: int,
+    body: dict,
+    tybot: TybotClient = Depends(get_tybot),
+    current_user=Depends(get_current_user),
+):
+    event_id = body.get("event_id")
+    if not event_id:
+        raise HTTPException(status_code=422, detail="event_id required")
+    record = await tybot.get(TABLE, str(exhibitor_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Exhibitor not found")
+    ids = [v.strip() for v in str(record.get("event_ids") or "").split(",") if v.strip()]
+    if str(event_id) in ids:
+        raise HTTPException(status_code=409, detail="Already assigned to this event")
+    ids.append(str(event_id))
+    await tybot.update(TABLE_ID, {"id": exhibitor_id, "event_ids": ",".join(ids)})
+    return {"event_ids": ",".join(ids)}
+
+
+@router.post("/{exhibitor_id}/unassign-event", summary="Remove exhibitor from an event")
+async def unassign_event(
+    exhibitor_id: int,
+    body: dict,
+    tybot: TybotClient = Depends(get_tybot),
+    current_user=Depends(get_current_user),
+):
+    event_id = body.get("event_id")
+    if not event_id:
+        raise HTTPException(status_code=422, detail="event_id required")
+    record = await tybot.get(TABLE, str(exhibitor_id))
+    if not record:
+        raise HTTPException(status_code=404, detail="Exhibitor not found")
+    ids = [v.strip() for v in str(record.get("event_ids") or "").split(",") if v.strip() and v.strip() != str(event_id)]
+    await tybot.update(TABLE_ID, {"id": exhibitor_id, "event_ids": ",".join(ids)})
+    return {"event_ids": ",".join(ids)}
 
 
 @router.delete("/{exhibitor_id}", summary="Delete exhibitor")

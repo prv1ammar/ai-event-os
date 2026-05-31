@@ -56,6 +56,7 @@ interface Exhibitor {
   export_experience?: string;
   event_id?: number;
   leads_id?: number | null;
+  event_ids?: string | null;
   [key: string]: unknown;
 }
 
@@ -70,22 +71,18 @@ async function fetchExhibitors(eventId: string | null): Promise<Exhibitor[]> {
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
-interface EventLink { id: number; event_id: number; exhibitor_id: number; }
-
-async function fetchExhibitorLinks(exhibitorId: number): Promise<EventLink[]> {
-  const raw = await apiRequest<EventLink[]>(`/api/v1/event-exhibitors?exhibitor_id=${exhibitorId}`);
-  return Array.isArray(raw) ? raw : [];
-}
-
 async function assignToEvent(exhibitorId: number, eventId: number): Promise<void> {
-  await apiRequest("/api/v1/event-exhibitors", {
+  await apiRequest(`/api/v1/exhibitors/${exhibitorId}/assign-event`, {
     method: "POST",
-    body: JSON.stringify({ exhibitor_id: exhibitorId, event_id: eventId }),
+    body: JSON.stringify({ event_id: eventId }),
   });
 }
 
-async function removeFromEvent(linkId: number): Promise<void> {
-  await apiRequest(`/api/v1/event-exhibitors/${linkId}`, { method: "DELETE" });
+async function removeFromEvent(exhibitorId: number, eventId: number): Promise<void> {
+  await apiRequest(`/api/v1/exhibitors/${exhibitorId}/unassign-event`, {
+    method: "POST",
+    body: JSON.stringify({ event_id: eventId }),
+  });
 }
 
 async function createExhibitor(data: Partial<Exhibitor>): Promise<void> {
@@ -133,36 +130,35 @@ function LogoInitials({ name }: { name: string }) {
 }
 
 // ─── Events Assignment Panel ──────────────────────────────────────────────────
-function EventsAssignment({ exhibitorId }: { exhibitorId: number }) {
+function EventsAssignment({ exhibitor }: { exhibitor: Exhibitor }) {
   const qc = useQueryClient();
   const { allEvents } = useEvent();
   const [adding, setAdding] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState("");
 
-  const { data: links = [], isLoading } = useQuery({
-    queryKey: ["exhibitor-links", exhibitorId],
-    queryFn: () => fetchExhibitorLinks(exhibitorId),
-    staleTime: 30_000,
-  });
-
-  const assignedIds = new Set(links.map((l) => l.event_id));
-  const unassigned = allEvents.filter((e) => !assignedIds.has(Number(e.id)));
+  const assignedIds = new Set(
+    String(exhibitor.event_ids ?? "").split(",").map((v) => v.trim()).filter(Boolean)
+  );
+  const unassigned = allEvents.filter((e) => !assignedIds.has(String(e.id)));
 
   async function handleAssign() {
     if (!selectedEventId) return;
-    await assignToEvent(exhibitorId, Number(selectedEventId));
-    qc.invalidateQueries({ queryKey: ["exhibitor-links", exhibitorId] });
-    qc.invalidateQueries({ queryKey: ["exhibitors"] });
-    setAdding(false);
-    setSelectedEventId("");
+    setSaving(true);
+    try {
+      await assignToEvent(exhibitor.id, Number(selectedEventId));
+      qc.invalidateQueries({ queryKey: ["exhibitors"] });
+      setAdding(false);
+      setSelectedEventId("");
+    } finally { setSaving(false); }
   }
 
-  async function handleRemove(linkId: number, evId: number) {
-    await removeFromEvent(linkId);
-    qc.invalidateQueries({ queryKey: ["exhibitor-links", exhibitorId] });
-    qc.invalidateQueries({ queryKey: ["exhibitors"] });
-    // If the removed event was the active view, refresh list
-    qc.invalidateQueries({ queryKey: ["exhibitors", String(evId)] });
+  async function handleRemove(evId: string) {
+    setSaving(true);
+    try {
+      await removeFromEvent(exhibitor.id, Number(evId));
+      qc.invalidateQueries({ queryKey: ["exhibitors"] });
+    } finally { setSaving(false); }
   }
 
   return (
@@ -172,29 +168,23 @@ function EventsAssignment({ exhibitorId }: { exhibitorId: number }) {
           <Calendar className="h-3 w-3" /> Événements assignés
         </p>
         {unassigned.length > 0 && !adding && (
-          <button onClick={() => setAdding(true)}
-            className="text-xs text-primary hover:underline font-medium">
+          <button onClick={() => setAdding(true)} className="text-xs text-primary hover:underline font-medium">
             + Ajouter
           </button>
         )}
       </div>
 
-      {isLoading ? (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
-          <Loader2 className="h-3 w-3 animate-spin" /> Chargement…
-        </div>
-      ) : links.length === 0 && !adding ? (
+      {assignedIds.size === 0 && !adding ? (
         <p className="text-xs text-muted-foreground italic">Aucun événement assigné.</p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
-          {links.map((lnk) => {
-            const ev = allEvents.find((e) => Number(e.id) === lnk.event_id);
+          {[...assignedIds].map((evId) => {
+            const ev = allEvents.find((e) => String(e.id) === evId);
             return (
-              <span key={lnk.id}
-                className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
-                {ev?.name ?? `Événement #${lnk.event_id}`}
-                <button onClick={() => handleRemove(lnk.id, lnk.event_id)}
-                  className="ml-0.5 hover:text-destructive transition-colors">
+              <span key={evId} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                {ev?.name ?? `Événement #${evId}`}
+                <button onClick={() => handleRemove(evId)} disabled={saving}
+                  className="ml-0.5 hover:text-destructive transition-colors disabled:opacity-50">
                   <X className="h-3 w-3" />
                 </button>
               </span>
@@ -215,8 +205,8 @@ function EventsAssignment({ exhibitorId }: { exhibitorId: number }) {
               ))}
             </SelectContent>
           </Select>
-          <Button size="sm" className="h-8 text-xs" onClick={handleAssign} disabled={!selectedEventId}>
-            Assigner
+          <Button size="sm" className="h-8 text-xs" onClick={handleAssign} disabled={!selectedEventId || saving}>
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Assigner"}
           </Button>
           <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAdding(false); setSelectedEventId(""); }}>
             <X className="h-3 w-3" />
@@ -270,7 +260,7 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
         </div>
       )}
 
-      <EventsAssignment exhibitorId={ex.id} />
+      <EventsAssignment exhibitor={ex} />
     </div>
   );
 }
