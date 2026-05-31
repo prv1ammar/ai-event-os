@@ -69,6 +69,14 @@ async def update_exhibitor(
     return await tybot.update(TABLE_ID, data)
 
 
+async def _get_exhibitor(tybot: TybotClient, exhibitor_id: int) -> dict:
+    rows = await tybot.list(TABLE, {"limit": 500})
+    record = next((r for r in rows if r.get("id") == exhibitor_id), None)
+    if not record:
+        raise HTTPException(status_code=404, detail="Exhibitor not found")
+    return record
+
+
 @router.post("/{exhibitor_id}/assign-event", summary="Assign exhibitor to an event")
 async def assign_event(
     exhibitor_id: int,
@@ -79,9 +87,7 @@ async def assign_event(
     event_id = body.get("event_id")
     if not event_id:
         raise HTTPException(status_code=422, detail="event_id required")
-    record = await tybot.get(TABLE, str(exhibitor_id))
-    if not record:
-        raise HTTPException(status_code=404, detail="Exhibitor not found")
+    record = await _get_exhibitor(tybot, exhibitor_id)
     ids = [v.strip() for v in str(record.get("event_ids") or "").split(",") if v.strip()]
     if str(event_id) in ids:
         raise HTTPException(status_code=409, detail="Already assigned to this event")
@@ -100,9 +106,7 @@ async def unassign_event(
     event_id = body.get("event_id")
     if not event_id:
         raise HTTPException(status_code=422, detail="event_id required")
-    record = await tybot.get(TABLE, str(exhibitor_id))
-    if not record:
-        raise HTTPException(status_code=404, detail="Exhibitor not found")
+    record = await _get_exhibitor(tybot, exhibitor_id)
     ids = [v.strip() for v in str(record.get("event_ids") or "").split(",") if v.strip() and v.strip() != str(event_id)]
     await tybot.update(TABLE_ID, {"id": exhibitor_id, "event_ids": ",".join(ids)})
     return {"event_ids": ",".join(ids)}
