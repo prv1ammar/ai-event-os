@@ -24,7 +24,8 @@ async def list_leads(
 ):
     rows = await tybot.list(TABLE, {"limit": 500})
     if event_id is not None:
-        rows = [r for r in rows if r.get("event_id") == event_id]
+        # Show leads assigned to this event OR unassigned (event_id null = global leads)
+        rows = [r for r in rows if r.get("event_id") in (event_id, None)]
     start = (page - 1) * limit
     return rows[start : start + limit]
 
