@@ -71,7 +71,7 @@ async def update_exhibitor(
 
 async def _get_exhibitor(tybot: TybotClient, exhibitor_id: int) -> dict:
     rows = await tybot.list(TABLE, {"limit": 500})
-    record = next((r for r in rows if r.get("id") == exhibitor_id), None)
+    record = next((r for r in rows if str(r.get("id", "")) == str(exhibitor_id)), None)
     if not record:
         raise HTTPException(status_code=404, detail="Exhibitor not found")
     return record
