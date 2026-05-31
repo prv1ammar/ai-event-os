@@ -62,6 +62,12 @@ interface Exhibitor {
 
 interface EventOption { id: number; name: string }
 
+async function fetchEventOptions(): Promise<EventOption[]> {
+  const raw = await apiRequest<EventOption[] | { list: EventOption[] }>("/api/v1/events?limit=100");
+  const rows = Array.isArray(raw) ? raw : (raw.list ?? []);
+  return rows.map((e) => ({ id: Number(e.id), name: String((e as Record<string, unknown>).name ?? `Event #${e.id}`) }));
+}
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 async function fetchExhibitors(eventId: string | null): Promise<Exhibitor[]> {
   const url = eventId
