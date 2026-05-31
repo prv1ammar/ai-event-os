@@ -53,14 +53,22 @@ interface Exhibitor {
   employee_count?: number;
   annual_revenue?: number;
   export_experience?: string;
+  event_id?: number;
   leads_id?: number | null;
   [key: string]: unknown;
 }
 
+interface EventOption { id: number; name: string }
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 async function fetchExhibitors(): Promise<Exhibitor[]> {
-  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>(`/api/v1/data/exhibitors`);
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>("/api/v1/exhibitors?limit=100");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
+}
+
+async function fetchEventOptions(): Promise<EventOption[]> {
+  const raw = await apiRequest<EventOption[] | { list: EventOption[] }>("/api/v1/events?limit=100");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 async function createExhibitor(data: Partial<Exhibitor>): Promise<void> {
@@ -162,10 +170,17 @@ interface ExhibitorFormProps {
 }
 
 function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorFormProps) {
+  const { data: events = [] } = useQuery({
+    queryKey: ["event-options"],
+    queryFn: fetchEventOptions,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const [form, setForm] = useState<Partial<Exhibitor>>({
     company_name: "", sector: "", email: "", phone: "", website: "",
     city: "", country: "", company_size: "", employee_count: undefined,
     annual_revenue: undefined, export_experience: "local", description: "",
+    event_id: undefined,
     ...initial,
   });
 
@@ -183,6 +198,23 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
+      {/* Event assignment */}
+      <div className="grid gap-1.5">
+        <Label>Événement</Label>
+        <Select
+          value={form.event_id != null ? String(form.event_id) : "none"}
+          onValueChange={(v) => set("event_id", v === "none" ? undefined : Number(v))}
+        >
+          <SelectTrigger><SelectValue placeholder="Sélectionner un événement" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Aucun événement</SelectItem>
+            {events.map((e) => (
+              <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       <div className="grid gap-1.5">
         <Label htmlFor="company_name">Nom de la société *</Label>
         <Input id="company_name" required placeholder="Ex: Atlas Fruits" value={form.company_name ?? ""}
@@ -283,6 +315,14 @@ function ExposantsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState("all");
+
+  const { data: events = [] } = useQuery({
+    queryKey: ["event-options"],
+    queryFn: fetchEventOptions,
+    staleTime: 5 * 60 * 1000,
+  });
+  const eventMap = Object.fromEntries(events.map((e) => [e.id, e.name]));
 
   const [viewEx, setViewEx] = useState<Exhibitor | null>(null);
   const [editEx, setEditEx] = useState<Exhibitor | null>(null);
@@ -313,6 +353,7 @@ function ExposantsPage() {
     const name = (e.company_name ?? "").toLowerCase();
     if (search && !name.includes(search.toLowerCase())) return false;
     if (sectorFilter !== "all" && e.sector !== sectorFilter) return false;
+    if (eventFilter !== "all" && String(e.event_id ?? "") !== eventFilter) return false;
     return true;
   });
 
@@ -384,6 +425,19 @@ function ExposantsPage() {
           <Input placeholder="Rechercher un exposant..." className="h-10 pl-9 bg-card"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
+        {events.length > 0 && (
+          <Select value={eventFilter} onValueChange={(v) => { setEventFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-52 h-10 bg-card">
+              <SelectValue placeholder="Tous les événements" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les événements</SelectItem>
+              {events.map((e) => (
+                <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <div className="flex flex-wrap gap-2">
           <button onClick={() => { setSectorFilter("all"); setPage(1); }}
             className={cn("rounded-lg px-3 py-1.5 text-sm font-medium transition-colors border",
@@ -417,7 +471,7 @@ function ExposantsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  {["Exposant", "Secteur", "Localisation", "Taille", "CA annuel", "Expérience", "Actions"].map((h) => (
+                  {["Exposant", "Événement", "Secteur", "Localisation", "CA annuel", "Expérience", "Actions"].map((h) => (
                     <TableHead key={h} className={cn(
                       "text-xs font-semibold uppercase tracking-wider text-muted-foreground",
                       h === "Actions" ? "text-right" : "",
@@ -428,7 +482,7 @@ function ExposantsPage() {
               <TableBody>
                 {paginated.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-12 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
                       Aucun exposant trouvé
                     </TableCell>
                   </TableRow>
@@ -446,12 +500,14 @@ function ExposantsPage() {
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">
+                          {ex.event_id && eventMap[ex.event_id]
+                            ? <span className="text-primary/80 font-medium">{eventMap[ex.event_id]}</span>
+                            : <span className="text-muted-foreground/50">—</span>}
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground">{ex.sector ?? "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {[ex.city, ex.country].filter(Boolean).join(", ") || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {ex.company_size ?? (ex.employee_count ? `${ex.employee_count} emp.` : "—")}
                         </TableCell>
                         <TableCell className="text-sm font-semibold text-foreground tabular-nums">
                           {formatRevenue(ex.annual_revenue)}

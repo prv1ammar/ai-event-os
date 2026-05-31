@@ -23,7 +23,14 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || err.detail || err.msg || `Erreur ${res.status}`);
+    const detail = err.detail;
+    const errText =
+      typeof detail === "string" ? detail
+      : Array.isArray(detail) ? detail.map((d: Record<string, unknown>) => d.msg ?? d.message ?? String(d)).join("; ")
+      : typeof err.message === "string" ? err.message
+      : typeof err.msg === "string" ? err.msg
+      : `Erreur ${res.status}`;
+    throw new Error(errText);
   }
 
   return res.json() as Promise<T>;

@@ -58,26 +58,18 @@ interface Event {
   budget?: string | number;
   language?: string;
   organization_id?: number;
-  slug?: string;
   [key: string]: unknown;
 }
 
-interface NocoDBResponse {
+interface EventsResponse {
   list: Event[];
   pageInfo?: { totalRows: number; page: number; pageSize: number; isFirstPage: boolean; isLastPage: boolean };
 }
 
-async function fetchEvents(): Promise<NocoDBResponse> {
-  const raw = await apiRequest<Event[] | NocoDBResponse>(`/api/v1/data/events`);
+async function fetchEvents(): Promise<EventsResponse> {
+  const raw = await apiRequest<Event[] | EventsResponse>("/api/v1/events");
   if (Array.isArray(raw)) return { list: raw };
-  return raw;
-}
-
-interface Organization { id: number; name?: string; [key: string]: unknown }
-
-async function fetchOrganizations(): Promise<Organization[]> {
-  const raw = await apiRequest<Organization[] | { list: Organization[] }>("/api/v1/data/organizations");
-  return Array.isArray(raw) ? raw : raw.list;
+  return raw as EventsResponse;
 }
 
 async function createEvent(data: Partial<Event>): Promise<void> {
@@ -159,12 +151,6 @@ function slugify(name: string): string {
 }
 
 function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps) {
-  const { data: organizations = [] } = useQuery({
-    queryKey: ["organizations"],
-    queryFn: fetchOrganizations,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const [form, setForm] = useState<Partial<Event>>({
     name: "", slug: "", type: "conference", status: "draft", language: "fr",
     visibility: "public",
@@ -197,26 +183,6 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
-      {/* Organization */}
-      {organizations.length > 0 && (
-        <div className="grid gap-1.5">
-          <Label>Organisation</Label>
-          <Select
-            value={String(form.organization_id ?? "")}
-            onValueChange={(v) => set("organization_id", Number(v))}
-          >
-            <SelectTrigger><SelectValue placeholder="Sélectionner une organisation" /></SelectTrigger>
-            <SelectContent>
-              {organizations.map((o) => (
-                <SelectItem key={o.id} value={String(o.id)}>
-                  {o.name ?? `Organisation #${o.id}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
       {/* Name + slug */}
       <div className="grid gap-1.5">
         <Label htmlFor="name">Nom de l'événement *</Label>
@@ -478,12 +444,24 @@ function EvenementsPage() {
     termines: events.filter((e) => e.status === "closed").length,
   };
 
+  const totalBudgetMAD = events.reduce((sum, e) => {
+    const n = Number(e.budget);
+    return isNaN(n) ? sum : sum + n;
+  }, 0);
+
+  function fmtTotalCA(n: number): string {
+    if (n === 0) return "—";
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M MAD`;
+    if (n >= 1_000) return `${Math.round(n / 1_000)}K MAD`;
+    return `${n} MAD`;
+  }
+
   const stats = [
     { label: "Total événements", value: isLoading ? "…" : String(totalRows), icon: Users, tone: "primary" },
     { label: "À venir", value: isLoading ? "…" : String(statusCounts.aVenir), icon: CalendarClock, tone: "blue" },
     { label: "En cours", value: isLoading ? "…" : String(statusCounts.enCours), icon: PlayCircle, tone: "green" },
     { label: "Terminés", value: isLoading ? "…" : String(statusCounts.termines), icon: CheckCircle2, tone: "gray" },
-    { label: "CA total généré", value: "—", icon: TrendingUp, tone: "amber" },
+    { label: "CA total généré", value: isLoading ? "…" : fmtTotalCA(totalBudgetMAD), icon: TrendingUp, tone: "amber" },
   ];
 
   return (

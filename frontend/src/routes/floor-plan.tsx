@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { Users, TrendingUp, MapPin, Activity, RefreshCw } from "lucide-react";
+import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Users, TrendingUp, MapPin, Activity, RefreshCw, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { apiRequest } from "@/lib/api";
 
 export const Route = createFileRoute("/floor-plan")({
   component: FloorPlanPage,
@@ -53,12 +55,29 @@ type Booth = {
   visitors?: number;
 };
 
+interface ApiBooth {
+  id: string | number;
+  number?: string;
+  zone?: string;
+  status?: string;
+  exhibitor_name?: string;
+  price_mad?: number;
+  size_m2?: number;
+  [key: string]: unknown;
+}
+
+function statusToDensity(status?: string): Density {
+  if (status === "occupied") return "forte";
+  if (status === "reserved") return "moyenne";
+  return "faible";
+}
+
 function makeBooth(id: string, exhibitor?: string, density: Density = "faible", visitors?: number): Booth {
   return { id, exhibitor, density, visitors };
 }
 
-// Hall A — rows 1–4, 8 booths per row
-const hallA: Booth[][] = [
+// Static floor plan layout — defines spatial arrangement of Hall A and Hall B
+const hallALayout: Booth[][] = [
   [
     makeBooth("A01", "AgroMaroc", "tres-forte", 142),
     makeBooth("A02", "Green Foods", "forte", 98),
@@ -101,8 +120,7 @@ const hallA: Booth[][] = [
   ],
 ];
 
-// Hall B — rows 1–4, 8 booths per row
-const hallB: Booth[][] = [
+const hallBLayout: Booth[][] = [
   [
     makeBooth("B01", "GulfExport", "tres-forte", 161),
     makeBooth("B02", "PanAfrica", "forte", 94),
@@ -144,6 +162,24 @@ const hallB: Booth[][] = [
     makeBooth("B32", "GhanaCoconut", "tres-forte", 131),
   ],
 ];
+
+function formatTime(date: Date) {
+  return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function mergeApiData(layout: Booth[][], apiMap: Map<string, ApiBooth>): Booth[][] {
+  return layout.map((row) =>
+    row.map((booth) => {
+      const api = apiMap.get(booth.id.toUpperCase());
+      if (!api) return booth;
+      return {
+        ...booth,
+        exhibitor: api.exhibitor_name || booth.exhibitor,
+        density: statusToDensity(api.status),
+      };
+    }),
+  );
+}
 
 function BoothCell({ booth, onClick, selected }: {
   booth: Booth;
@@ -188,15 +224,70 @@ function SpecialZone({ label, icon: Icon, className }: {
 
 function FloorPlanPage() {
   const [selectedBooth, setSelectedBooth] = useState<Booth | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
 
-  const allBooths = [...hallA.flat(), ...hallB.flat()];
-  const densityCounts = allBooths.reduce((acc, b) => {
-    acc[b.density] = (acc[b.density] ?? 0) + 1;
-    return acc;
-  }, {} as Record<Density, number>);
+  const { data: apiBooths, isLoading, isError, refetch, isFetching } = useQuery<ApiBooth[]>({
+    queryKey: ["booths-floor-plan"],
+    queryFn: () => apiRequest<ApiBooth[]>("/api/v1/booths?limit=100"),
+    staleTime: 60_000,
+    retry: 1,
+    throwOnError: false,
+  });
 
-  const totalVisitors = allBooths.reduce((a, b) => a + (b.visitors ?? 0), 0);
-  const hotBooths = allBooths.filter((b) => b.density === "tres-forte");
+  // Build lookup map: booth number (uppercase) → api booth
+  const apiMap = useMemo(() => {
+    const map = new Map<string, ApiBooth>();
+    if (apiBooths) {
+      for (const b of apiBooths) {
+        if (b.number) map.set(b.number.toUpperCase(), b);
+      }
+    }
+    return map;
+  }, [apiBooths]);
+
+  // Merge API data into layout (falls back to static data if API unavailable)
+  const hallA = useMemo(() => mergeApiData(hallALayout, apiMap), [apiMap]);
+  const hallB = useMemo(() => mergeApiData(hallBLayout, apiMap), [apiMap]);
+
+  const allBooths = useMemo(() => [...hallA.flat(), ...hallB.flat()], [hallA, hallB]);
+
+  const densityCounts = useMemo(
+    () =>
+      allBooths.reduce((acc, b) => {
+        acc[b.density] = (acc[b.density] ?? 0) + 1;
+        return acc;
+      }, {} as Record<Density, number>),
+    [allBooths],
+  );
+
+  const totalVisitors = useMemo(
+    () => allBooths.reduce((a, b) => a + (b.visitors ?? 0), 0),
+    [allBooths],
+  );
+
+  const hotBooths = useMemo(
+    () => allBooths.filter((b) => b.density === "tres-forte"),
+    [allBooths],
+  );
+
+  const peakBooth = useMemo(
+    () =>
+      allBooths.reduce(
+        (max, b) => ((b.visitors ?? 0) > (max?.visitors ?? 0) ? b : max),
+        allBooths[0],
+      ),
+    [allBooths],
+  );
+
+  function handleRefresh() {
+    refetch();
+    setLastUpdated(new Date());
+    if (selectedBooth) {
+      // Re-sync selected booth in case data changed
+      const updated = allBooths.find((b) => b.id === selectedBooth.id);
+      if (updated) setSelectedBooth(updated);
+    }
+  }
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -205,12 +296,26 @@ function FloorPlanPage() {
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-primary">Suivi en Temps Réel</p>
           <h1 className="font-display text-xl font-semibold text-foreground mt-0.5">Plan du Salon</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Densité de trafic en temps réel · Mise à jour: 14:32</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Densité de trafic en temps réel · Mise à jour : {formatTime(lastUpdated)}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 text-xs">
-            <RefreshCw className="h-3.5 w-3.5" />
-            Actualiser
+          {isError && (
+            <span className="flex items-center gap-1 text-xs text-destructive">
+              <AlertCircle className="h-3.5 w-3.5" />
+              Données hors ligne
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 text-xs"
+            onClick={handleRefresh}
+            disabled={isFetching}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} />
+            {isFetching ? "Actualisation…" : "Actualiser"}
           </Button>
         </div>
       </div>
@@ -220,7 +325,7 @@ function FloorPlanPage() {
         {[
           { label: "Visiteurs présents", value: totalVisitors.toLocaleString("fr-FR"), icon: Users, tone: "primary" },
           { label: "Stands très actifs", value: hotBooths.length.toString(), icon: Activity, tone: "rose" },
-          { label: "Pic d'affluence", value: "Stand A01", icon: TrendingUp, tone: "amber" },
+          { label: "Pic d'affluence", value: peakBooth ? `Stand ${peakBooth.id}` : "—", icon: TrendingUp, tone: "amber" },
           { label: "Stands occupés", value: `${allBooths.length}/64`, icon: MapPin, tone: "green" },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-border bg-card p-3">
@@ -255,7 +360,17 @@ function FloorPlanPage() {
       </div>
 
       {/* Floor plan grid */}
-      <div className="rounded-xl border border-border bg-card p-4 space-y-4 overflow-x-auto">
+      <div className={cn(
+        "rounded-xl border border-border bg-card p-4 space-y-4 overflow-x-auto transition-opacity",
+        isLoading && "opacity-60 pointer-events-none",
+      )}>
+        {isLoading && (
+          <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            Chargement des stands…
+          </div>
+        )}
+
         {/* Entrance */}
         <div className="flex justify-center">
           <SpecialZone label="Entrée Principale" icon={MapPin} className="w-40 h-10" />
@@ -330,11 +445,10 @@ function FloorPlanPage() {
             </p>
           </div>
           <span className={cn(
-            "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold",
+            "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border",
             densityConfig[selectedBooth.density].bg,
             densityConfig[selectedBooth.density].text,
             densityConfig[selectedBooth.density].border,
-            "border",
           )}>
             {densityConfig[selectedBooth.density].label}
           </span>

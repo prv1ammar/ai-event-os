@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from app.core.config import settings
 
 # ── Routers ────────────────────────────────────────────────────────────────────
+from app.routers.public import router as public_router
 from app.routers.auth import router as auth_router
 from app.routers.events import router as events_router
 from app.routers.exhibitors import router as exhibitors_router
@@ -81,6 +82,7 @@ app.add_middleware(
 )
 
 # ── Register routers ───────────────────────────────────────────────────────────
+app.include_router(public_router)
 app.include_router(auth_router)
 app.include_router(events_router)
 app.include_router(exhibitors_router)
