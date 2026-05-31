@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
   Search,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -43,11 +44,12 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SheetDescription,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { apiRequest } from "@/lib/api";
+import { apiRequest, smartDbRequest } from "@/lib/api";
 import { useEvent } from "@/lib/event-context";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 export const Route = createFileRoute("/visiteurs")({
   component: VisiteursPage,
@@ -173,6 +175,105 @@ async function fetchVisitors(eventId: string | null): Promise<Visitor[]> {
     : `/api/v1/visitors?limit=500`;
   const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(url);
   return Array.isArray(raw) ? raw : (raw.list ?? []);
+}
+
+async function createVisitor(data: Partial<Visitor>): Promise<void> {
+  await smartDbRequest("visitors", "POST", data as Record<string, unknown>);
+}
+
+// ─── Visitor Form ─────────────────────────────────────────────────────────────
+function VisitorForm({ onSubmit, onCancel, loading, eventId }: {
+  onSubmit: (data: Partial<Visitor>) => void;
+  onCancel: () => void;
+  loading: boolean;
+  eventId?: string | null;
+}) {
+  const [form, setForm] = useState<Partial<Visitor>>({
+    firstname: "", lastname: "", email: "", phone: "",
+    company: "", country: "", city: "", visitor_type: "standard",
+    status: "confirmed",
+  });
+
+  function set(key: keyof Visitor, val: unknown) {
+    setForm((p) => ({ ...p, [key]: val }));
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const payload: Partial<Visitor> = { ...form };
+    if (eventId) (payload as Record<string, unknown>).event_id = Number(eventId);
+    onSubmit(payload);
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="firstname">Prénom *</Label>
+          <Input id="firstname" required placeholder="Mohamed" value={form.firstname ?? ""}
+            onChange={(e) => set("firstname", e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="lastname">Nom *</Label>
+          <Input id="lastname" required placeholder="Alaoui" value={form.lastname ?? ""}
+            onChange={(e) => set("lastname", e.target.value)} />
+        </div>
+      </div>
+      <div className="grid gap-1.5">
+        <Label htmlFor="email">Email *</Label>
+        <Input id="email" type="email" required placeholder="contact@exemple.com" value={form.email ?? ""}
+          onChange={(e) => set("email", e.target.value)} />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="phone">Téléphone</Label>
+          <Input id="phone" placeholder="+212 6xx xxx xxx" value={form.phone ?? ""}
+            onChange={(e) => set("phone", e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label>Pack</Label>
+          <Select value={form.visitor_type ?? "standard"} onValueChange={(v) => set("visitor_type", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="standard">Standard</SelectItem>
+              <SelectItem value="vip">VIP</SelectItem>
+              <SelectItem value="press">Presse</SelectItem>
+              <SelectItem value="invite">Invité</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor="company">Entreprise</Label>
+          <Input id="company" placeholder="Société SA" value={form.company ?? ""}
+            onChange={(e) => set("company", e.target.value)} />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor="country">Pays</Label>
+          <Input id="country" placeholder="Maroc" value={form.country ?? ""}
+            onChange={(e) => set("country", e.target.value)} />
+        </div>
+      </div>
+      <div className="grid gap-1.5">
+        <Label>Statut</Label>
+        <Select value={form.status ?? "confirmed"} onValueChange={(v) => set("status", v)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="confirmed">Confirmé</SelectItem>
+            <SelectItem value="pending">En attente</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Annuler</Button>
+        <Button type="submit" disabled={loading} className="bg-gradient-primary text-primary-foreground shadow-glow-sm">
+          {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+          Créer le visiteur
+        </Button>
+      </div>
+    </form>
+  );
 }
 
 function Avatar({ name }: { name: string }) {
@@ -304,6 +405,7 @@ function VisitorDrawer({ visitor, open, onClose }: { visitor: Visitor | null; op
 }
 
 function VisiteursPage() {
+  const qc = useQueryClient();
   const { activeEvent } = useEvent();
   const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [page, setPage] = useState(1);
@@ -311,6 +413,47 @@ function VisiteursPage() {
   const [packFilter, setPackFilter] = useState("all");
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const createMut = useMutation({
+    mutationFn: createVisitor,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["visitors"] }); setShowCreate(false); },
+  });
+
+  function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (ev) => {
+      const text = ev.target?.result as string;
+      const lines = text.trim().split("\n");
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase().replace(/"/g, ""));
+      let created = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = lines[i].split(",").map((c) => c.trim().replace(/"/g, ""));
+        const row: Record<string, string> = {};
+        headers.forEach((h, idx) => { if (cols[idx]) row[h] = cols[idx]; });
+        if (!row.email && !row.firstname && !row.first_name) continue;
+        const payload: Partial<Visitor> = {
+          firstname: row.firstname ?? row.first_name ?? row.prenom ?? "",
+          lastname: row.lastname ?? row.last_name ?? row.nom ?? "",
+          email: row.email ?? "",
+          phone: row.phone ?? row.telephone ?? "",
+          company: row.company ?? row.entreprise ?? "",
+          country: row.country ?? row.pays ?? "",
+          visitor_type: row.visitor_type ?? row.pack ?? "standard",
+          status: row.status ?? row.statut ?? "confirmed",
+        };
+        if (eventId) (payload as Record<string, unknown>).event_id = Number(eventId);
+        try { await createVisitor(payload); created++; } catch {}
+      }
+      qc.invalidateQueries({ queryKey: ["visitors"] });
+      alert(`${created} visiteur(s) importé(s) avec succès.`);
+      if (csvInputRef.current) csvInputRef.current.value = "";
+    };
+    reader.readAsText(file);
+  }
 
   const { data: visitors = [], isLoading, isError, error } = useQuery({
     queryKey: ["visitors", eventId],
@@ -352,11 +495,12 @@ function VisiteursPage() {
           <p className="text-sm text-muted-foreground mt-0.5">Gérez vos visiteurs et leurs accès</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8 bg-card">
+          <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
+          <Button variant="outline" size="sm" className="h-8 bg-card" onClick={() => csvInputRef.current?.click()}>
             <Upload className="h-3.5 w-3.5" />
             Import CSV
           </Button>
-          <Button size="sm" className="h-8 bg-gradient-primary text-primary-foreground shadow-glow-sm">
+          <Button size="sm" className="h-8 bg-gradient-primary text-primary-foreground shadow-glow-sm" onClick={() => setShowCreate(true)}>
             <Plus className="h-3.5 w-3.5" />
             Ajouter visiteur
           </Button>
@@ -514,6 +658,25 @@ function VisiteursPage() {
       </div>
 
       <VisitorDrawer visitor={selectedVisitor} open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+
+      {/* Create Sheet */}
+      <Sheet open={showCreate} onOpenChange={setShowCreate}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader className="mb-4">
+            <SheetTitle>Nouveau visiteur</SheetTitle>
+            <SheetDescription>Remplissez les informations pour créer un visiteur.</SheetDescription>
+          </SheetHeader>
+          <VisitorForm
+            eventId={eventId}
+            loading={createMut.isPending}
+            onCancel={() => setShowCreate(false)}
+            onSubmit={(data) => createMut.mutate(data)}
+          />
+          {createMut.isError && (
+            <p className="text-xs text-destructive mt-2">{(createMut.error as Error).message}</p>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
