@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1/events", tags=["Events"])
 @router.get("", summary="List events")
 async def list_events(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     status: Optional[str] = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),

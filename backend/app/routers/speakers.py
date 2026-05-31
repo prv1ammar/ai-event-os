@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/speakers", tags=["Speakers"])
 @router.get("", summary="List speakers")
 async def list_speakers(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):

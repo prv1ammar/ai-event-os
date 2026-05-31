@@ -25,7 +25,7 @@ def _has_event(row: dict, event_id: int) -> bool:
 @router.get("", summary="List exhibitors")
 async def list_exhibitors(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
@@ -68,18 +68,6 @@ async def update_exhibitor(
     data["id"] = exhibitor_id
     return await tybot.update(TABLE_ID, data)
 
-
-async def _get_exhibitor(tybot: TybotClient, exhibitor_id: int) -> dict:
-    rows = await tybot.list(TABLE, {"limit": 500})
-    # Debug: log ids found
-    ids_found = [r.get("id") for r in rows]
-    record = next((r for r in rows if str(r.get("id", "")) == str(exhibitor_id)), None)
-    if not record:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Exhibitor {exhibitor_id} not found. List has {len(rows)} rows, ids sample: {ids_found[:5]}"
-        )
-    return record
 
 
 @router.post("/{exhibitor_id}/assign-event", summary="Assign exhibitor to an event")

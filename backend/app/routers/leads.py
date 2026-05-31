@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/leads", tags=["Leads"])
 @router.get("", summary="List leads")
 async def list_leads(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),

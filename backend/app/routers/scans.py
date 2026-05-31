@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/v1/scans", tags=["Scans"])
 @router.get("", summary="List QR scans")
 async def list_scans(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),

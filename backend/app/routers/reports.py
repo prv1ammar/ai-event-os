@@ -32,7 +32,7 @@ async def list_reports():
 async def export_report(
     table: str = Query("leads", description="Table name to export"),
     format: Literal["csv", "json"] = Query("csv"),
-    limit: int = Query(100, ge=1, le=100),
+    limit: int = Query(100, ge=1, le=500),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
