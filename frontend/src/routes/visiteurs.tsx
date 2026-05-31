@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
+import { useEvent } from "@/lib/event-context";
 import { useState } from "react";
 
 export const Route = createFileRoute("/visiteurs")({
@@ -166,8 +167,11 @@ function formatDate(iso?: string): string {
   return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-async function fetchVisitors(): Promise<Visitor[]> {
-  const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(`/api/v1/visitors?limit=500`);
+async function fetchVisitors(eventId: string | null): Promise<Visitor[]> {
+  const url = eventId
+    ? `/api/v1/visitors?limit=500&event_id=${eventId}`
+    : `/api/v1/visitors?limit=500`;
+  const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(url);
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
@@ -300,6 +304,8 @@ function VisitorDrawer({ visitor, open, onClose }: { visitor: Visitor | null; op
 }
 
 function VisiteursPage() {
+  const { activeEvent } = useEvent();
+  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [packFilter, setPackFilter] = useState("all");
@@ -307,8 +313,9 @@ function VisiteursPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const { data: visitors = [], isLoading, isError, error } = useQuery({
-    queryKey: ["visitors"],
-    queryFn: fetchVisitors,
+    queryKey: ["visitors", eventId],
+    queryFn: () => fetchVisitors(eventId),
+    staleTime: 60_000,
   });
 
   const counts = {

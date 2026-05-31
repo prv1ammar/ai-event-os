@@ -29,6 +29,7 @@ from app.routers.campaigns import router as campaigns_router
 from app.routers.landing_pages import router as landing_pages_router
 from app.routers.analytics import router as analytics_router
 from app.routers.speakers import router as speakers_router
+from app.routers.event_exhibitors import router as event_exhibitors_router
 
 # ── Phase 3: Visitors / QR / Badges / Scans ───────────────────────────────────
 from app.routers.badges import router as badges_router
@@ -97,6 +98,7 @@ app.include_router(campaigns_router)
 app.include_router(landing_pages_router)
 app.include_router(analytics_router)
 app.include_router(speakers_router)
+app.include_router(event_exhibitors_router)
 
 # ── Phase 3 routers ────────────────────────────────────────────────────────────
 app.include_router(badges_router)

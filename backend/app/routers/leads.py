@@ -18,11 +18,15 @@ router = APIRouter(prefix="/api/v1/leads", tags=["Leads"])
 async def list_leads(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    params = {"limit": limit, "offset": (page - 1) * limit}
-    return await tybot.list(TABLE, params)
+    rows = await tybot.list(TABLE, {"limit": 500})
+    if event_id is not None:
+        rows = [r for r in rows if r.get("event_id") == event_id]
+    start = (page - 1) * limit
+    return rows[start : start + limit]
 
 
 @router.post("", status_code=201, summary="Create lead")
