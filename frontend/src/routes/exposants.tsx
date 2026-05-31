@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   Plus, Search, Eye, Pencil, MoreHorizontal, Users, Globe,
-  Download, ChevronLeft, ChevronRight, Loader2, AlertCircle, TrendingUp, Trash2, X,
+  Download, ChevronLeft, ChevronRight, Loader2, AlertCircle, TrendingUp, Trash2, X, Calendar,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +67,24 @@ async function fetchExhibitors(eventId: string | null): Promise<Exhibitor[]> {
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
+interface EventLink { id: number; event_id: number; exhibitor_id: number; }
+
+async function fetchExhibitorLinks(exhibitorId: number): Promise<EventLink[]> {
+  const raw = await apiRequest<EventLink[]>(`/api/v1/event-exhibitors?exhibitor_id=${exhibitorId}`);
+  return Array.isArray(raw) ? raw : [];
+}
+
+async function assignToEvent(exhibitorId: number, eventId: number): Promise<void> {
+  await apiRequest("/api/v1/event-exhibitors", {
+    method: "POST",
+    body: JSON.stringify({ exhibitor_id: exhibitorId, event_id: eventId }),
+  });
+}
+
+async function removeFromEvent(linkId: number): Promise<void> {
+  await apiRequest(`/api/v1/event-exhibitors/${linkId}`, { method: "DELETE" });
+}
+
 async function createExhibitor(data: Partial<Exhibitor>): Promise<void> {
   await smartDbRequest("exhibitors", "POST", data as Record<string, unknown>);
 }
@@ -107,6 +125,101 @@ function LogoInitials({ name }: { name: string }) {
   return (
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-primary/20 to-primary-glow/20 text-xs font-semibold text-primary">
       {initials || "EX"}
+    </div>
+  );
+}
+
+// ─── Events Assignment Panel ──────────────────────────────────────────────────
+function EventsAssignment({ exhibitorId }: { exhibitorId: number }) {
+  const qc = useQueryClient();
+  const { allEvents } = useEvent();
+  const [adding, setAdding] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState("");
+
+  const { data: links = [], isLoading } = useQuery({
+    queryKey: ["exhibitor-links", exhibitorId],
+    queryFn: () => fetchExhibitorLinks(exhibitorId),
+    staleTime: 30_000,
+  });
+
+  const assignedIds = new Set(links.map((l) => l.event_id));
+  const unassigned = allEvents.filter((e) => !assignedIds.has(Number(e.id)));
+
+  async function handleAssign() {
+    if (!selectedEventId) return;
+    await assignToEvent(exhibitorId, Number(selectedEventId));
+    qc.invalidateQueries({ queryKey: ["exhibitor-links", exhibitorId] });
+    qc.invalidateQueries({ queryKey: ["exhibitors"] });
+    setAdding(false);
+    setSelectedEventId("");
+  }
+
+  async function handleRemove(linkId: number, evId: number) {
+    await removeFromEvent(linkId);
+    qc.invalidateQueries({ queryKey: ["exhibitor-links", exhibitorId] });
+    qc.invalidateQueries({ queryKey: ["exhibitors"] });
+    // If the removed event was the active view, refresh list
+    qc.invalidateQueries({ queryKey: ["exhibitors", String(evId)] });
+  }
+
+  return (
+    <div className="rounded-lg bg-muted/40 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+          <Calendar className="h-3 w-3" /> Événements assignés
+        </p>
+        {unassigned.length > 0 && !adding && (
+          <button onClick={() => setAdding(true)}
+            className="text-xs text-primary hover:underline font-medium">
+            + Ajouter
+          </button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-1">
+          <Loader2 className="h-3 w-3 animate-spin" /> Chargement…
+        </div>
+      ) : links.length === 0 && !adding ? (
+        <p className="text-xs text-muted-foreground italic">Aucun événement assigné.</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {links.map((lnk) => {
+            const ev = allEvents.find((e) => Number(e.id) === lnk.event_id);
+            return (
+              <span key={lnk.id}
+                className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
+                {ev?.name ?? `Événement #${lnk.event_id}`}
+                <button onClick={() => handleRemove(lnk.id, lnk.event_id)}
+                  className="ml-0.5 hover:text-destructive transition-colors">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {adding && (
+        <div className="flex items-center gap-2 pt-1">
+          <Select value={selectedEventId} onValueChange={setSelectedEventId}>
+            <SelectTrigger className="h-8 flex-1 text-xs">
+              <SelectValue placeholder="Choisir un événement…" />
+            </SelectTrigger>
+            <SelectContent>
+              {unassigned.map((e) => (
+                <SelectItem key={e.id} value={String(e.id)} className="text-xs">{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button size="sm" className="h-8 text-xs" onClick={handleAssign} disabled={!selectedEventId}>
+            Assigner
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAdding(false); setSelectedEventId(""); }}>
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -153,6 +266,8 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
           <p className="text-sm text-foreground leading-relaxed">{ex.description}</p>
         </div>
       )}
+
+      <EventsAssignment exhibitorId={ex.id} />
     </div>
   );
 }

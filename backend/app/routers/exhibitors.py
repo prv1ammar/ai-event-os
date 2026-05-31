@@ -3,6 +3,7 @@ app/routers/exhibitors.py — CRUD for exhibitors via TybotFlow SmartDB
 Table: exhibitors | ID: mrdg571gqvhuiz0
 """
 
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.core.tybot_client import TybotClient, get_tybot
@@ -10,6 +11,7 @@ from app.core.security import get_current_user
 
 TABLE = "exhibitors"
 TABLE_ID = "mrdg571gqvhuiz0"
+JUNCTION_TABLE = "event_exhibitors"
 
 router = APIRouter(prefix="/api/v1/exhibitors", tags=["Exhibitors"])
 
@@ -22,11 +24,16 @@ async def list_exhibitors(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    # Fetch a large batch then filter client-side (TybotFlow where filter
-    # is unreliable for user-added columns — returns empty instead of filtered).
-    rows = await tybot.list(TABLE, {"limit": 500})
     if event_id is not None:
-        rows = [r for r in rows if r.get("event_id") == event_id]
+        # Use junction table: get exhibitor_ids for this event, then filter
+        links, all_exhibitors = await asyncio.gather(
+            tybot.list(JUNCTION_TABLE, {"limit": 500}),
+            tybot.list(TABLE, {"limit": 500}),
+        )
+        assigned_ids = {lnk.get("exhibitor_id") for lnk in links if lnk.get("event_id") == event_id}
+        rows = [e for e in all_exhibitors if e.get("id") in assigned_ids]
+    else:
+        rows = await tybot.list(TABLE, {"limit": 500})
     start = (page - 1) * limit
     return rows[start : start + limit]
 
