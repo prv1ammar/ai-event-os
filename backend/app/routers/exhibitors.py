@@ -22,17 +22,13 @@ async def list_exhibitors(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    params = {"limit": limit, "offset": (page - 1) * limit}
-    if event_id:
-        params["where"] = f"(event_id,eq,{event_id})"
-    try:
-        return await tybot.list(TABLE, params)
-    except Exception:
-        # TybotFlow may not support where filter on this table — fall back to all
-        rows = await tybot.list(TABLE, {"limit": limit, "offset": (page - 1) * limit})
-        if event_id:
-            rows = [r for r in rows if str(r.get("event_id", "")) == str(event_id)]
-        return rows
+    # Fetch a large batch then filter client-side (TybotFlow where filter
+    # is unreliable for user-added columns — returns empty instead of filtered).
+    rows = await tybot.list(TABLE, {"limit": 500})
+    if event_id is not None:
+        rows = [r for r in rows if r.get("event_id") == event_id]
+    start = (page - 1) * limit
+    return rows[start : start + limit]
 
 
 @router.post("", status_code=201, summary="Create exhibitor")

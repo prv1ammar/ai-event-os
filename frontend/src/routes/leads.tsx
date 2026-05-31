@@ -27,6 +27,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { apiRequest } from "@/lib/api";
+import { useEvent } from "@/lib/event-context";
 
 export const Route = createFileRoute("/leads")({
   component: LeadsPage,
@@ -109,18 +110,24 @@ function Avatar({ name, size = "sm" }: { name: string; size?: "sm" | "lg" }) {
   );
 }
 
-async function fetchLeads(): Promise<Lead[]> {
-  const raw = await apiRequest<Lead[] | { list: Lead[] }>("/api/v1/leads?limit=500");
+async function fetchLeads(eventId: string | null): Promise<Lead[]> {
+  const url = eventId
+    ? `/api/v1/leads?limit=500&event_id=${eventId}`
+    : `/api/v1/leads?limit=500`;
+  const raw = await apiRequest<Lead[] | { list: Lead[] }>(url);
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 function LeadsPage() {
+  const { activeEvent } = useEvent();
+  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
 
   const { data: leads = [], isLoading, isError, error } = useQuery({
-    queryKey: ["leads"],
-    queryFn: fetchLeads,
+    queryKey: ["leads", eventId],
+    queryFn: () => fetchLeads(eventId),
+    staleTime: 60_000,
   });
 
   const filtered = leads.filter((l) => {
