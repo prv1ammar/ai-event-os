@@ -18,11 +18,21 @@ router = APIRouter(prefix="/api/v1/exhibitors", tags=["Exhibitors"])
 async def list_exhibitors(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
+    event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
-    return await tybot.list(TABLE, params)
+    if event_id:
+        params["where"] = f"(event_id,eq,{event_id})"
+    try:
+        return await tybot.list(TABLE, params)
+    except Exception:
+        # TybotFlow may not support where filter on this table — fall back to all
+        rows = await tybot.list(TABLE, {"limit": limit, "offset": (page - 1) * limit})
+        if event_id:
+            rows = [r for r in rows if str(r.get("event_id", "")) == str(event_id)]
+        return rows
 
 
 @router.post("", status_code=201, summary="Create exhibitor")

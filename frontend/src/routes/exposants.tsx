@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { apiRequest, smartDbRequest } from "@/lib/api";
+import { useEvent } from "@/lib/event-context";
 
 export const Route = createFileRoute("/exposants")({
   component: ExposantsPage,
@@ -58,8 +59,11 @@ interface Exhibitor {
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
-async function fetchExhibitors(): Promise<Exhibitor[]> {
-  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>(`/api/v1/exhibitors?limit=100`);
+async function fetchExhibitors(eventId: string | null): Promise<Exhibitor[]> {
+  const url = eventId
+    ? `/api/v1/exhibitors?limit=100&event_id=${eventId}`
+    : `/api/v1/exhibitors?limit=100`;
+  const raw = await apiRequest<Exhibitor[] | { list: Exhibitor[] }>(url);
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
@@ -280,6 +284,8 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
 // ─── Main Page ────────────────────────────────────────────────────────────────
 function ExposantsPage() {
   const qc = useQueryClient();
+  const { activeEvent } = useEvent();
+  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [sectorFilter, setSectorFilter] = useState("all");
@@ -290,8 +296,9 @@ function ExposantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Exhibitor | null>(null);
 
   const { data: exhibitors = [], isLoading, isError, error } = useQuery({
-    queryKey: ["exhibitors"],
-    queryFn: fetchExhibitors,
+    queryKey: ["exhibitors", eventId],
+    queryFn: () => fetchExhibitors(eventId),
+    staleTime: 60_000,
   });
 
   const createMut = useMutation({
