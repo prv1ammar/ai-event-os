@@ -110,8 +110,8 @@ function Avatar({ name, size = "sm" }: { name: string; size?: "sm" | "lg" }) {
 }
 
 async function fetchLeads(): Promise<Lead[]> {
-  const raw = await apiRequest<Lead[] | { list: Lead[] }>("/api/v1/data/leads");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<Lead[] | { list: Lead[] }>("/api/v1/leads?limit=500");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 function LeadsPage() {

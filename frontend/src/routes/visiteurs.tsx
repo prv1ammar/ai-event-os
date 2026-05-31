@@ -167,8 +167,8 @@ function formatDate(iso?: string): string {
 }
 
 async function fetchVisitors(): Promise<Visitor[]> {
-  const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(`/api/v1/data/visitors`);
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(`/api/v1/visitors?limit=500`);
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 function Avatar({ name }: { name: string }) {

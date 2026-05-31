@@ -33,13 +33,13 @@ interface EventRecord { id: number; budget?: number; [key: string]: unknown }
 interface ExhibitorRecord { id: number; annual_revenue?: number; [key: string]: unknown }
 
 async function fetchEvents(): Promise<EventRecord[]> {
-  const raw = await apiRequest<EventRecord[] | { list: EventRecord[] }>("/api/v1/data/events");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<EventRecord[] | { list: EventRecord[] }>("/api/v1/events?limit=100");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 async function fetchExhibitors(): Promise<ExhibitorRecord[]> {
-  const raw = await apiRequest<ExhibitorRecord[] | { list: ExhibitorRecord[] }>("/api/v1/data/exhibitors");
-  return Array.isArray(raw) ? raw : raw.list;
+  const raw = await apiRequest<ExhibitorRecord[] | { list: ExhibitorRecord[] }>("/api/v1/exhibitors?limit=100");
+  return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
 function fmtShort(n: number): string {
