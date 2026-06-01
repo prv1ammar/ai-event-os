@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import QRCode from "react-qr-code";
 import {
   Plus,
   Search,
@@ -285,28 +286,9 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function MockQRGrid({ size = 80 }: { size?: number }) {
-  const n = 9;
-  const cell = size / n;
-  const corner = [
-    [1,1,1,1,1,1,1],[1,0,0,0,0,0,1],[1,0,1,1,1,0,1],
-    [1,0,1,1,1,0,1],[1,0,1,1,1,0,1],[1,0,0,0,0,0,1],[1,1,1,1,1,1,1],
-  ];
-  const rects: { x: number; y: number }[] = [];
-  corner.forEach((row, r) => row.forEach((c, col) => { if (c) rects.push({ x: col * cell, y: r * cell }); }));
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (r < 7 && c < 7) continue;
-      if (((r * 17 + c * 13) % 3) !== 0) rects.push({ x: c * cell, y: r * cell });
-    }
-  }
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="text-foreground">
-      {rects.map(({ x, y }, i) => (
-        <rect key={i} x={x + 0.5} y={y + 0.5} width={cell - 1} height={cell - 1} fill="currentColor" />
-      ))}
-    </svg>
-  );
+function buildQRValue(visitor: Visitor, badgeNum: string): string {
+  const type = visitor.visitor_type ?? "standard";
+  return `AIEVENT|${visitor.id}|${type}|${badgeNum}`;
 }
 
 function VisitorDrawer({ visitor, open, onClose }: { visitor: Visitor | null; open: boolean; onClose: () => void }) {
@@ -314,6 +296,8 @@ function VisitorDrawer({ visitor, open, onClose }: { visitor: Visitor | null; op
   const name = getFullName(visitor);
   const ticketType = getTicketType(visitor);
   const status = getStatus(visitor);
+  const badgeNum = getBadge(visitor);
+  const qrValue = buildQRValue(visitor, badgeNum !== "—" ? badgeNum : `VIS-${String(visitor.id).padStart(4, "0")}`);
   const badgeHeaderColor =
     ticketType === "vip" ? "bg-gradient-to-br from-purple-600 to-indigo-600" :
     ticketType === "press" || ticketType === "presse" ? "bg-orange-500" : "bg-sky-600";
@@ -380,10 +364,12 @@ function VisitorDrawer({ visitor, open, onClose }: { visitor: Visitor | null; op
                   <p className="font-display text-base font-bold text-foreground text-center">{name}</p>
                   <p className="text-xs text-muted-foreground text-center">{getCompany(visitor)}</p>
                 </div>
-                <div className="p-3 rounded-xl bg-muted/30 border border-border">
-                  <MockQRGrid size={80} />
+                <div className="p-3 rounded-xl bg-white border border-border">
+                  <QRCode value={qrValue} size={80} level="M" />
                 </div>
-                <p className="font-mono text-xs text-muted-foreground tracking-widest">{getBadge(visitor)}</p>
+                <p className="font-mono text-xs text-muted-foreground tracking-widest">
+                  {badgeNum !== "—" ? badgeNum : `VIS-${String(visitor.id).padStart(4, "0")}`}
+                </p>
               </div>
             </div>
           </div>
