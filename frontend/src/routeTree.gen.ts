@@ -20,6 +20,7 @@ import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as FloorPlanRouteImport } from './routes/floor-plan'
 import { Route as ExposantsRouteImport } from './routes/exposants'
 import { Route as EvenementsRouteImport } from './routes/evenements'
+import { Route as ScannerRouteImport } from './routes/scanner'
 import { Route as BadgesRouteImport } from './routes/badges'
 import { Route as AutomatisationRouteImport } from './routes/automatisation'
 import { Route as LandingPageRouteImport } from './routes/landing-page'
@@ -80,6 +81,11 @@ const EvenementsRoute = EvenementsRouteImport.update({
   path: '/evenements',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ScannerRoute = ScannerRouteImport.update({
+  id: '/scanner',
+  path: '/scanner',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const BadgesRoute = BadgesRouteImport.update({
   id: '/badges',
   path: '/badges',
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/rapports': typeof RapportsRoute
   '/visiteurs': typeof VisiteursRoute
   '/badges': typeof BadgesRoute
+  '/scanner': typeof ScannerRoute
   '/automatisation': typeof AutomatisationRoute
   '/landing-page': typeof LandingPageRoute
 }
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/rapports': typeof RapportsRoute
   '/visiteurs': typeof VisiteursRoute
   '/badges': typeof BadgesRoute
+  '/scanner': typeof ScannerRoute
   '/automatisation': typeof AutomatisationRoute
   '/landing-page': typeof LandingPageRoute
 }
@@ -150,6 +158,7 @@ export interface FileRoutesById {
   '/rapports': typeof RapportsRoute
   '/visiteurs': typeof VisiteursRoute
   '/badges': typeof BadgesRoute
+  '/scanner': typeof ScannerRoute
   '/automatisation': typeof AutomatisationRoute
   '/landing-page': typeof LandingPageRoute
 }
@@ -169,6 +178,7 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/visiteurs'
     | '/badges'
+    | '/scanner'
     | '/automatisation'
     | '/landing-page'
   fileRoutesByTo: FileRoutesByTo
@@ -186,6 +196,7 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/visiteurs'
     | '/badges'
+    | '/scanner'
     | '/automatisation'
     | '/landing-page'
   id:
@@ -203,6 +214,7 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/visiteurs'
     | '/badges'
+    | '/scanner'
     | '/automatisation'
     | '/landing-page'
   fileRoutesById: FileRoutesById
@@ -221,6 +233,7 @@ export interface RootRouteChildren {
   RapportsRoute: typeof RapportsRoute
   VisiteursRoute: typeof VisiteursRoute
   BadgesRoute: typeof BadgesRoute
+  ScannerRoute: typeof ScannerRoute
   AutomatisationRoute: typeof AutomatisationRoute
   LandingPageRoute: typeof LandingPageRoute
 }
@@ -311,6 +324,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BadgesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/scanner': {
+      id: '/scanner'
+      path: '/scanner'
+      fullPath: '/scanner'
+      preLoaderRoute: typeof ScannerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/automatisation': {
       id: '/automatisation'
       path: '/automatisation'
@@ -349,6 +369,7 @@ const rootRouteChildren: RootRouteChildren = {
   RapportsRoute: RapportsRoute,
   VisiteursRoute: VisiteursRoute,
   BadgesRoute: BadgesRoute,
+  ScannerRoute: ScannerRoute,
   AutomatisationRoute: AutomatisationRoute,
   LandingPageRoute: LandingPageRoute,
 }

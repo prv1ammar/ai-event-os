@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import QRCode from "react-qr-code";
 import {
   Download, Printer, Search, QrCode, CheckCircle2, Clock, Users,
 } from "lucide-react";
@@ -78,32 +79,11 @@ function getTypeStyle(type?: string) {
   return TYPE_STYLES[(type ?? "standard").toLowerCase()] ?? TYPE_STYLES.standard;
 }
 
-// ─── QR Code (real SVG pattern based on qr_code string) ───────────────────────
-function QRCodeSVG({ value, size = 64 }: { value: string; size?: number }) {
-  const n = 9;
-  const cell = size / n;
-  // Corner finder pattern
-  const corner = [
-    [1,1,1,1,1,1,1],[1,0,0,0,0,0,1],[1,0,1,1,1,0,1],
-    [1,0,1,1,1,0,1],[1,0,1,1,1,0,1],[1,0,0,0,0,0,1],[1,1,1,1,1,1,1],
-  ];
-  const cells: { x: number; y: number }[] = [];
-  corner.forEach((row, r) => row.forEach((c, col) => { if (c) cells.push({ x: col * cell, y: r * cell }); }));
-  // Data cells based on value hash
-  for (let r = 0; r < n; r++) {
-    for (let c = 0; c < n; c++) {
-      if (r < 7 && c < 7) continue;
-      const hash = (r * 31 + c * 17 + value.charCodeAt((r + c) % Math.max(1, value.length))) % 3;
-      if (hash !== 0) cells.push({ x: c * cell, y: r * cell });
-    }
-  }
-  return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="text-foreground">
-      {cells.map(({ x, y }, i) => (
-        <rect key={i} x={x + 0.5} y={y + 0.5} width={cell - 1} height={cell - 1} fill="currentColor" />
-      ))}
-    </svg>
-  );
+// QR value format: AIEVENT|{visitor_id}|{badge_type}|{badge_number}
+function buildQRValue(visitor: Visitor, badge?: Badge): string {
+  const type = visitor.visitor_type ?? badge?.badge_type ?? "standard";
+  const num = badge?.badge_number ?? `VIS-${String(visitor.id).padStart(4, "0")}`;
+  return `AIEVENT|${visitor.id}|${type}|${num}`;
 }
 
 // ─── Badge Card ───────────────────────────────────────────────────────────────
@@ -117,7 +97,7 @@ function BadgeCard({ visitor, badge, eventName }: {
   const type = visitor.visitor_type ?? badge?.badge_type ?? "standard";
   const style = getTypeStyle(type);
   const badgeNum = badge?.badge_number ?? `VIS-${String(visitor.id).padStart(4, "0")}`;
-  const qrValue = badge?.qr_code ?? `QR-${visitor.id}-${Date.now()}`;
+  const qrValue = buildQRValue(visitor, badge);
   const isActive = badge?.status === "active" || !badge;
 
   return (
@@ -137,10 +117,8 @@ function BadgeCard({ visitor, badge, eventName }: {
             <p className="text-[10px] text-gray-500">{visitor.company ?? "—"}</p>
             {visitor.job_title && <p className="text-[9px] text-gray-400">{visitor.job_title}</p>}
           </div>
-          <div className={cn("p-1.5 rounded-lg", style.accentBg)}>
-            <div className={style.accentText}>
-              <QRCodeSVG value={qrValue} size={52} />
-            </div>
+          <div className={cn("p-1.5 rounded-lg bg-white")}>
+            <QRCode value={qrValue} size={52} level="M" />
           </div>
           <p className="font-mono text-[9px] text-gray-400 tracking-widest">{badgeNum}</p>
           <div className="w-full rounded bg-gray-50 px-2 py-1 text-center">
