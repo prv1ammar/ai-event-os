@@ -1,0 +1,106 @@
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+
+  REGISTRY: registry.tybotflow.com:443
+  FRONTEND_IMAGE: $REGISTRY/root/ai-events/frontend
+  AGENT_IMAGE: $REGISTRY/root/ai-eventsm/backend
+
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA
+
+stages:
+  - build
+  - publish
+  - deploy
+
+.docker_login: &docker_login
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+
+# ──────────────────────────────────────────────────────────────
+# BUILD
+# ──────────────────────────────────────────────────────────────
+build:backend:
+  stage: build
+  tags: [dev-runner.81]
+  <<: *docker_login
+  script:
+    - |
+      docker build \
+        --cache-from "$API_IMAGE:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        -f Dockerfile \
+        -t "$API_IMAGE:$IMAGE_TAG" \
+        -t "$API_IMAGE:$CI_COMMIT_REF_SLUG" \
+        .
+    - docker push "$API_IMAGE:$IMAGE_TAG"
+    - docker push "$API_IMAGE:$CI_COMMIT_REF_SLUG"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+build:frontend:
+  stage: build
+  tags: [dev-runner.81]
+  <<: *docker_login
+  script:
+    - |
+      docker build \
+        --cache-from "$FRONTEND_IMAGE:latest" \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --build-arg VITE_API_URL=https://market-api.tybotflow.com/ \
+        -t "$FRONTEND_IMAGE:$IMAGE_TAG" \
+        -t "$FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG" \
+        frontend
+    - docker push "$FRONTEND_IMAGE:$IMAGE_TAG"
+    - docker push "$FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+# ──────────────────────────────────────────────────────────────
+# PUBLISH (tag :latest)
+# ──────────────────────────────────────────────────────────────
+publish:backend:
+  stage: publish
+  tags: [dev-runner.81]
+  <<: *docker_login
+  needs: [build:api]
+  script:
+    - docker pull "$API_IMAGE:$IMAGE_TAG"
+    - docker tag  "$API_IMAGE:$IMAGE_TAG" "$API_IMAGE:latest"
+    - docker push "$API_IMAGE:latest"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+publish:frontend:
+  stage: publish
+  tags: [dev-runner.81]
+  <<: *docker_login
+  needs: [build:frontend]
+  script:
+    - docker pull "$FRONTEND_IMAGE:$IMAGE_TAG"
+    - docker tag  "$FRONTEND_IMAGE:$IMAGE_TAG" "$FRONTEND_IMAGE:latest"
+    - docker push "$FRONTEND_IMAGE:latest"
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+# ──────────────────────────────────────────────────────────────
+# DEPLOY
+# ──────────────────────────────────────────────────────────────
+deploy:
+  stage: deploy
+  tags: [dev-runner.81]
+  needs: [publish:backend, publish:frontend]
+  only:
+    - main
+  before_script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+  script:
+    - cd /home/tython/ai-event
+    - docker compose pull
+    - docker compose up -d --remove-orphans
+    - docker image prune -f
