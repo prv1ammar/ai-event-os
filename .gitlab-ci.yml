@@ -178,7 +178,7 @@ deploy:
 
   script:
 
-    - cd /home/tython/ai-events
+    - cd /home/tython/ai-event
 
     - docker compose pull
 
