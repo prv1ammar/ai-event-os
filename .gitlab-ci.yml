@@ -76,7 +76,7 @@ build:frontend:
       docker build \
         --cache-from "$FRONTEND_IMAGE:latest" \
         --build-arg BUILDKIT_INLINE_CACHE=1 \
-        --build-arg VITE_API_URL=https://market-api.tybotflow.com/ \
+        --build-arg VITE_API_URL=https://events-api.tybot.ma \
         -t "$FRONTEND_IMAGE:$IMAGE_TAG" \
         -t "$FRONTEND_IMAGE:$CI_COMMIT_REF_SLUG" \
         frontend
