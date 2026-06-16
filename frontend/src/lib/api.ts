@@ -1,6 +1,8 @@
 import { getToken, clearToken } from "./auth";
 
-export const API_BASE = "http://localhost:8001";
+// In production, use relative URLs so nginx can proxy /api/ → backend.
+// In local dev, set VITE_API_URL=http://localhost:8001 in .env.local
+export const API_BASE = (import.meta.env.VITE_API_URL as string) ?? "";
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
