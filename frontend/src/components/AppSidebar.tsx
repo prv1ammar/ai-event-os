@@ -15,6 +15,7 @@ import {
   QrCode,
   ScanLine,
   Map,
+  MapPin,
   Globe,
   Zap,
   LogOut,
@@ -47,9 +48,15 @@ const groups = [
       { title: "Exposants", url: "/exposants", icon: Building2 },
       { title: "Visiteurs", url: "/visiteurs", icon: Users },
       { title: "Leads", url: "/leads", icon: Target },
+    ],
+  },
+  {
+    label: "LOGISTIQUE",
+    items: [
       { title: "Badges & QR", url: "/badges", icon: QrCode },
       { title: "Scanner QR", url: "/scanner", icon: ScanLine },
       { title: "Plan du Salon", url: "/floor-plan", icon: Map },
+      { title: "Lieux", url: "/lieux", icon: MapPin },
     ],
   },
   {

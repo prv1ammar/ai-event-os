@@ -17,10 +17,13 @@ router = APIRouter(prefix="/api/v1/booths", tags=["Booths"])
 async def list_booths(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
+    logistics_zones_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
+    if logistics_zones_id:
+        params["where"] = f"(logistics_zones_id,eq,{logistics_zones_id})"
     return await tybot.list_by_table(TABLE_ID, params)
 
 

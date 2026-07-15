@@ -9,31 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as VisiteursRouteImport } from './routes/visiteurs'
+import { Route as ScannerRouteImport } from './routes/scanner'
 import { Route as RapportsRouteImport } from './routes/rapports'
 import { Route as ProgrammeRouteImport } from './routes/programme'
 import { Route as ParametresRouteImport } from './routes/parametres'
 import { Route as MarketingRouteImport } from './routes/marketing'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as LieuxRouteImport } from './routes/lieux'
 import { Route as LeadsRouteImport } from './routes/leads'
-import { Route as FinanceRouteImport } from './routes/finance'
+import { Route as LandingPageRouteImport } from './routes/landing-page'
 import { Route as FloorPlanRouteImport } from './routes/floor-plan'
+import { Route as FinanceRouteImport } from './routes/finance'
 import { Route as ExposantsRouteImport } from './routes/exposants'
 import { Route as EvenementsRouteImport } from './routes/evenements'
-import { Route as ScannerRouteImport } from './routes/scanner'
 import { Route as BadgesRouteImport } from './routes/badges'
 import { Route as AutomatisationRouteImport } from './routes/automatisation'
-import { Route as LandingPageRouteImport } from './routes/landing-page'
 import { Route as IndexRouteImport } from './routes/index'
 
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const VisiteursRoute = VisiteursRouteImport.update({
   id: '/visiteurs',
   path: '/visiteurs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ScannerRoute = ScannerRouteImport.update({
+  id: '/scanner',
+  path: '/scanner',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RapportsRoute = RapportsRouteImport.update({
@@ -56,19 +57,34 @@ const MarketingRoute = MarketingRouteImport.update({
   path: '/marketing',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LieuxRoute = LieuxRouteImport.update({
+  id: '/lieux',
+  path: '/lieux',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LeadsRoute = LeadsRouteImport.update({
   id: '/leads',
   path: '/leads',
   getParentRoute: () => rootRouteImport,
 } as any)
-const FinanceRoute = FinanceRouteImport.update({
-  id: '/finance',
-  path: '/finance',
+const LandingPageRoute = LandingPageRouteImport.update({
+  id: '/landing-page',
+  path: '/landing-page',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FloorPlanRoute = FloorPlanRouteImport.update({
   id: '/floor-plan',
   path: '/floor-plan',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FinanceRoute = FinanceRouteImport.update({
+  id: '/finance',
+  path: '/finance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ExposantsRoute = ExposantsRouteImport.update({
@@ -81,11 +97,6 @@ const EvenementsRoute = EvenementsRouteImport.update({
   path: '/evenements',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ScannerRoute = ScannerRouteImport.update({
-  id: '/scanner',
-  path: '/scanner',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const BadgesRoute = BadgesRouteImport.update({
   id: '/badges',
   path: '/badges',
@@ -96,11 +107,6 @@ const AutomatisationRoute = AutomatisationRouteImport.update({
   path: '/automatisation',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LandingPageRoute = LandingPageRouteImport.update({
-  id: '/landing-page',
-  path: '/landing-page',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -108,150 +114,157 @@ const IndexRoute = IndexRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/login': typeof LoginRoute
   '/': typeof IndexRoute
+  '/automatisation': typeof AutomatisationRoute
+  '/badges': typeof BadgesRoute
   '/evenements': typeof EvenementsRoute
   '/exposants': typeof ExposantsRoute
   '/finance': typeof FinanceRoute
   '/floor-plan': typeof FloorPlanRoute
+  '/landing-page': typeof LandingPageRoute
   '/leads': typeof LeadsRoute
+  '/lieux': typeof LieuxRoute
+  '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/rapports': typeof RapportsRoute
-  '/visiteurs': typeof VisiteursRoute
-  '/badges': typeof BadgesRoute
   '/scanner': typeof ScannerRoute
-  '/automatisation': typeof AutomatisationRoute
-  '/landing-page': typeof LandingPageRoute
+  '/visiteurs': typeof VisiteursRoute
 }
 export interface FileRoutesByTo {
-  '/login': typeof LoginRoute
   '/': typeof IndexRoute
+  '/automatisation': typeof AutomatisationRoute
+  '/badges': typeof BadgesRoute
   '/evenements': typeof EvenementsRoute
   '/exposants': typeof ExposantsRoute
   '/finance': typeof FinanceRoute
   '/floor-plan': typeof FloorPlanRoute
+  '/landing-page': typeof LandingPageRoute
   '/leads': typeof LeadsRoute
+  '/lieux': typeof LieuxRoute
+  '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/rapports': typeof RapportsRoute
-  '/visiteurs': typeof VisiteursRoute
-  '/badges': typeof BadgesRoute
   '/scanner': typeof ScannerRoute
-  '/automatisation': typeof AutomatisationRoute
-  '/landing-page': typeof LandingPageRoute
+  '/visiteurs': typeof VisiteursRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/login': typeof LoginRoute
   '/': typeof IndexRoute
+  '/automatisation': typeof AutomatisationRoute
+  '/badges': typeof BadgesRoute
   '/evenements': typeof EvenementsRoute
   '/exposants': typeof ExposantsRoute
   '/finance': typeof FinanceRoute
   '/floor-plan': typeof FloorPlanRoute
+  '/landing-page': typeof LandingPageRoute
   '/leads': typeof LeadsRoute
+  '/lieux': typeof LieuxRoute
+  '/login': typeof LoginRoute
   '/marketing': typeof MarketingRoute
   '/parametres': typeof ParametresRoute
   '/programme': typeof ProgrammeRoute
   '/rapports': typeof RapportsRoute
-  '/visiteurs': typeof VisiteursRoute
-  '/badges': typeof BadgesRoute
   '/scanner': typeof ScannerRoute
-  '/automatisation': typeof AutomatisationRoute
-  '/landing-page': typeof LandingPageRoute
+  '/visiteurs': typeof VisiteursRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/login'
     | '/'
+    | '/automatisation'
+    | '/badges'
     | '/evenements'
     | '/exposants'
     | '/finance'
     | '/floor-plan'
+    | '/landing-page'
     | '/leads'
+    | '/lieux'
+    | '/login'
     | '/marketing'
     | '/parametres'
     | '/programme'
     | '/rapports'
-    | '/visiteurs'
-    | '/badges'
     | '/scanner'
-    | '/automatisation'
-    | '/landing-page'
+    | '/visiteurs'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/login'
     | '/'
+    | '/automatisation'
+    | '/badges'
     | '/evenements'
     | '/exposants'
     | '/finance'
     | '/floor-plan'
+    | '/landing-page'
     | '/leads'
+    | '/lieux'
+    | '/login'
     | '/marketing'
     | '/parametres'
     | '/programme'
     | '/rapports'
-    | '/visiteurs'
-    | '/badges'
     | '/scanner'
-    | '/automatisation'
-    | '/landing-page'
+    | '/visiteurs'
   id:
     | '__root__'
-    | '/login'
     | '/'
+    | '/automatisation'
+    | '/badges'
     | '/evenements'
     | '/exposants'
     | '/finance'
     | '/floor-plan'
+    | '/landing-page'
     | '/leads'
+    | '/lieux'
+    | '/login'
     | '/marketing'
     | '/parametres'
     | '/programme'
     | '/rapports'
-    | '/visiteurs'
-    | '/badges'
     | '/scanner'
-    | '/automatisation'
-    | '/landing-page'
+    | '/visiteurs'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  LoginRoute: typeof LoginRoute
   IndexRoute: typeof IndexRoute
+  AutomatisationRoute: typeof AutomatisationRoute
+  BadgesRoute: typeof BadgesRoute
   EvenementsRoute: typeof EvenementsRoute
   ExposantsRoute: typeof ExposantsRoute
   FinanceRoute: typeof FinanceRoute
   FloorPlanRoute: typeof FloorPlanRoute
+  LandingPageRoute: typeof LandingPageRoute
   LeadsRoute: typeof LeadsRoute
+  LieuxRoute: typeof LieuxRoute
+  LoginRoute: typeof LoginRoute
   MarketingRoute: typeof MarketingRoute
   ParametresRoute: typeof ParametresRoute
   ProgrammeRoute: typeof ProgrammeRoute
   RapportsRoute: typeof RapportsRoute
-  VisiteursRoute: typeof VisiteursRoute
-  BadgesRoute: typeof BadgesRoute
   ScannerRoute: typeof ScannerRoute
-  AutomatisationRoute: typeof AutomatisationRoute
-  LandingPageRoute: typeof LandingPageRoute
+  VisiteursRoute: typeof VisiteursRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/visiteurs': {
       id: '/visiteurs'
       path: '/visiteurs'
       fullPath: '/visiteurs'
       preLoaderRoute: typeof VisiteursRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/scanner': {
+      id: '/scanner'
+      path: '/scanner'
+      fullPath: '/scanner'
+      preLoaderRoute: typeof ScannerRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/rapports': {
@@ -282,6 +295,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MarketingRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lieux': {
+      id: '/lieux'
+      path: '/lieux'
+      fullPath: '/lieux'
+      preLoaderRoute: typeof LieuxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/leads': {
       id: '/leads'
       path: '/leads'
@@ -289,11 +316,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LeadsRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/finance': {
-      id: '/finance'
-      path: '/finance'
-      fullPath: '/finance'
-      preLoaderRoute: typeof FinanceRouteImport
+    '/landing-page': {
+      id: '/landing-page'
+      path: '/landing-page'
+      fullPath: '/landing-page'
+      preLoaderRoute: typeof LandingPageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/floor-plan': {
@@ -301,6 +328,13 @@ declare module '@tanstack/react-router' {
       path: '/floor-plan'
       fullPath: '/floor-plan'
       preLoaderRoute: typeof FloorPlanRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/finance': {
+      id: '/finance'
+      path: '/finance'
+      fullPath: '/finance'
+      preLoaderRoute: typeof FinanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/exposants': {
@@ -324,25 +358,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof BadgesRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/scanner': {
-      id: '/scanner'
-      path: '/scanner'
-      fullPath: '/scanner'
-      preLoaderRoute: typeof ScannerRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/automatisation': {
       id: '/automatisation'
       path: '/automatisation'
       fullPath: '/automatisation'
       preLoaderRoute: typeof AutomatisationRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/landing-page': {
-      id: '/landing-page'
-      path: '/landing-page'
-      fullPath: '/landing-page'
-      preLoaderRoute: typeof LandingPageRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -356,22 +376,23 @@ declare module '@tanstack/react-router' {
 }
 
 const rootRouteChildren: RootRouteChildren = {
-  LoginRoute: LoginRoute,
   IndexRoute: IndexRoute,
+  AutomatisationRoute: AutomatisationRoute,
+  BadgesRoute: BadgesRoute,
   EvenementsRoute: EvenementsRoute,
   ExposantsRoute: ExposantsRoute,
   FinanceRoute: FinanceRoute,
   FloorPlanRoute: FloorPlanRoute,
+  LandingPageRoute: LandingPageRoute,
   LeadsRoute: LeadsRoute,
+  LieuxRoute: LieuxRoute,
+  LoginRoute: LoginRoute,
   MarketingRoute: MarketingRoute,
   ParametresRoute: ParametresRoute,
   ProgrammeRoute: ProgrammeRoute,
   RapportsRoute: RapportsRoute,
-  VisiteursRoute: VisiteursRoute,
-  BadgesRoute: BadgesRoute,
   ScannerRoute: ScannerRoute,
-  AutomatisationRoute: AutomatisationRoute,
-  LandingPageRoute: LandingPageRoute,
+  VisiteursRoute: VisiteursRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

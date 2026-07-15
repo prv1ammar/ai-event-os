@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import {
-  Users, Building2, CalendarDays, DollarSign, ShoppingCart,
-  TrendingUp, ArrowRight, Layers, CheckCircle2, Clock3, XCircle,
+  Users, Building2, CalendarDays, DollarSign, Target,
+  TrendingUp, ArrowRight, Layers, CheckCircle2, Clock3, XCircle, ChevronDown,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -13,8 +14,14 @@ import { cn } from "@/lib/utils";
 import { PageShell, Surface } from "@/components/PageShell";
 import { KpiCard, type KpiTone } from "@/components/KpiCard";
 import { apiRequest } from "@/lib/api";
-import { useEvent } from "@/lib/event-context";
+import { useEvent, type ActiveEvent } from "@/lib/event-context";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -24,16 +31,17 @@ export const Route = createFileRoute("/")({
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DashboardData {
-  event: {
+  events: Array<{
     id: number; name?: string; start_date?: string; end_date?: string;
     event_type?: string; status?: string; is_free?: boolean;
     venues?: Array<{ id: number; name?: string }>;
-  };
+  }>;
   kpis: {
     visitors_total: number; visitors_confirmed: number; visitors_arrived: number;
     exhibitors_total: number; exhibitors_confirmed: number;
     sessions_total: number;
     orders_total: number; orders_paid: number;
+    leads_total: number;
     revenue_paid: number; revenue_pending: number;
     visitors_by_status: Record<string, number>;
     exhibitors_by_status: Record<string, number>;
@@ -122,43 +130,114 @@ function ProgressBar({ value, max, color = "bg-gradient-primary" }: { value: num
   );
 }
 
+// ── Event multi-select ──────────────────────────────────────────────────────────
+
+function EventMultiSelect({ events, selected, onChange }: {
+  events: ActiveEvent[]; selected: string[]; onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  }
+
+  const label =
+    selected.length === 0 ? "Sélectionner des événements"
+    : selected.length === events.length ? "Tous les événements"
+    : selected.length === 1 ? (events.find((e) => e.id === selected[0])?.shortName ?? "1 événement")
+    : `${selected.length} événements`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 min-w-[200px] justify-between gap-2 text-xs">
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[300px] p-0">
+        <Command>
+          <CommandInput placeholder="Rechercher un événement…" className="text-xs" />
+          <CommandList>
+            <CommandEmpty>Aucun événement trouvé.</CommandEmpty>
+            <CommandGroup>
+              {events.map((e) => {
+                const checked = selected.includes(e.id);
+                return (
+                  <CommandItem
+                    key={e.id}
+                    value={e.name}
+                    onSelect={() => toggle(e.id)}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Checkbox checked={checked} onCheckedChange={() => toggle(e.id)} />
+                    <span className="flex-1 truncate text-xs">{e.name}</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 function Dashboard() {
-  const { activeEvent } = useEvent();
-  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
+  const { activeEvent, allEvents } = useEvent();
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (selectedEventIds.length === 0 && activeEvent.id !== "0") {
+      setSelectedEventIds([activeEvent.id]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEvent.id]);
+
+  const sortedIds = selectedEventIds.slice().sort();
+  const eventSelector = <EventMultiSelect events={allEvents} selected={selectedEventIds} onChange={setSelectedEventIds} />;
 
   const { data, isLoading, isError } = useQuery<DashboardData>({
-    queryKey: ["dashboard", eventId],
-    queryFn: () => apiRequest<DashboardData>(`/api/v1/analytics/dashboard/${eventId}`),
-    enabled: !!eventId,
+    queryKey: ["dashboard", sortedIds.join(",")],
+    queryFn: () => apiRequest<DashboardData>(`/api/v1/analytics/dashboard?event_ids=${sortedIds.join(",")}`),
+    enabled: sortedIds.length > 0,
     staleTime: 60_000,
     retry: false,
   });
 
-  if (!eventId) return (
-    <PageShell eyebrow="Tableau de bord" title="Tableau de bord">
+  if (sortedIds.length === 0) return (
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}>
       <div className="flex flex-col items-center justify-center h-96 gap-3 text-center">
         <CalendarDays className="h-12 w-12 text-muted-foreground/30" />
-        <p className="text-sm font-medium text-foreground">Sélectionnez un événement</p>
-        <p className="text-xs text-muted-foreground">Utilisez le menu « Événement actif » en haut pour choisir un événement.</p>
+        <p className="text-sm font-medium text-foreground">Sélectionnez un ou plusieurs événements</p>
+        <p className="text-xs text-muted-foreground">Utilisez le sélecteur ci-dessus pour choisir un ou plusieurs événements à afficher.</p>
       </div>
     </PageShell>
   );
 
   if (isLoading) return (
-    <PageShell eyebrow="Tableau de bord" title={activeEvent.name}><DashSkeleton /></PageShell>
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}><DashSkeleton /></PageShell>
   );
 
   if (isError || !data) return (
-    <PageShell eyebrow="Tableau de bord" title={activeEvent.name}>
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}>
       <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
         Impossible de charger les données TybotFlow.
       </div>
     </PageShell>
   );
 
-  const { kpis, top_orders, visitors_chart, event } = data;
+  const { kpis, top_orders, visitors_chart, events } = data;
+  const isMulti = events.length > 1;
+  const dashboardTitle = isMulti ? `${events.length} événements sélectionnés` : (events[0]?.name ?? activeEvent.name);
+  const dashboardDescription = isMulti
+    ? events.map((e) => e.name).join(" · ")
+    : [
+        fmtDate(events[0]?.start_date) !== "—" ? `${fmtDate(events[0]?.start_date)} — ${fmtDate(events[0]?.end_date)}` : null,
+        events[0]?.venues?.[0]?.name ?? null,
+      ].filter(Boolean).join(" · ");
 
   // ── KPI cards ────────────────────────────────────────────────────────────────
   const kpiCards: Array<{ label: string; value: string; sub: string; icon: LucideIcon; tone: KpiTone }> = [
@@ -175,10 +254,10 @@ function Dashboard() {
       icon: Building2, tone: "blue",
     },
     {
-      label: "Commandes",
-      value: fmt(kpis.orders_total),
-      sub: `${fmt(kpis.orders_paid)} payées`,
-      icon: ShoppingCart, tone: "green",
+      label: "Leads générés",
+      value: fmt(kpis.leads_total),
+      sub: "contacts CRM",
+      icon: Target, tone: "green",
     },
     {
       label: "Sessions",
@@ -216,11 +295,9 @@ function Dashboard() {
   return (
     <PageShell
       eyebrow="Tableau de bord"
-      title={event.name ?? activeEvent.name}
-      description={[
-        fmtDate(event.start_date) !== "—" ? `${fmtDate(event.start_date)} — ${fmtDate(event.end_date)}` : null,
-        event.venues?.[0]?.name ?? null,
-      ].filter(Boolean).join(" · ")}
+      title={dashboardTitle}
+      description={dashboardDescription}
+      actions={eventSelector}
     >
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">

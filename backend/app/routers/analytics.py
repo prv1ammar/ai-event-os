@@ -9,7 +9,7 @@ Aggregates per-event KPIs across the new TybotFlow bases:
 import asyncio
 from collections import Counter
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
@@ -20,6 +20,7 @@ SESSIONS_TABLE_ID = "mabd59f3b36f4df83"    # Evenements base
 VISITEURS_TABLE_ID = "m3b5a520cdf13cc6e"   # Participants base
 EXPOSANTS_TABLE_ID = "m0b2dd0eb02083bf3"   # Participants base
 ORDERS_TABLE_ID = "m0067719083ff9860"      # Revenu base
+LEADS_TABLE_ID = "m78f17b1f5fcb640d"       # CRM base (contacts)
 
 BIG = 500
 
@@ -42,22 +43,40 @@ async def rows_for_event(tybot: TybotClient, table_id: str, event_id: int) -> li
             return []
 
 
-@router.get("/dashboard/{event_id}", summary="Dashboard KPIs for one event")
+@router.get("/dashboard", summary="Dashboard KPIs for one or more events")
 async def dashboard(
-    event_id: int,
+    event_ids: str = Query(..., description="Comma-separated event ids"),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    event, visitors, exhibitors, sessions, orders = await asyncio.gather(
-        tybot.get_by_table(EVENTS_TABLE_ID, str(event_id)),
-        rows_for_event(tybot, VISITEURS_TABLE_ID, event_id),
-        rows_for_event(tybot, EXPOSANTS_TABLE_ID, event_id),
-        rows_for_event(tybot, SESSIONS_TABLE_ID, event_id),
-        rows_for_event(tybot, ORDERS_TABLE_ID, event_id),
-    )
+    try:
+        ids = [int(x) for x in event_ids.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(status_code=400, detail="event_ids must be a comma-separated list of integers")
+    if not ids:
+        raise HTTPException(status_code=400, detail="event_ids is required")
 
-    if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+    async def fetch_for_event(eid: int):
+        return await asyncio.gather(
+            tybot.get_by_table(EVENTS_TABLE_ID, str(eid)),
+            rows_for_event(tybot, VISITEURS_TABLE_ID, eid),
+            rows_for_event(tybot, EXPOSANTS_TABLE_ID, eid),
+            rows_for_event(tybot, SESSIONS_TABLE_ID, eid),
+            rows_for_event(tybot, ORDERS_TABLE_ID, eid),
+            rows_for_event(tybot, LEADS_TABLE_ID, eid),
+        )
+
+    results = await asyncio.gather(*(fetch_for_event(eid) for eid in ids))
+
+    events = [r[0] for r in results if r[0]]
+    if not events:
+        raise HTTPException(status_code=404, detail="No matching events found")
+
+    visitors = [row for r in results for row in r[1]]
+    exhibitors = [row for r in results for row in r[2]]
+    sessions = [row for r in results for row in r[3]]
+    orders = [row for r in results for row in r[4]]
+    leads = [row for r in results for row in r[5]]
 
     # ── Registration statuses ───────────────────────────────────────────────────
     visitors_by_status = dict(Counter(v.get("registration_status") or "pending" for v in visitors))
@@ -103,7 +122,7 @@ async def dashboard(
     ]
 
     return {
-        "event": event,
+        "events": events,
         "kpis": {
             "visitors_total": len(visitors),
             "visitors_confirmed": visitors_by_status.get("confirmed", 0),
@@ -113,6 +132,7 @@ async def dashboard(
             "sessions_total": len(sessions),
             "orders_total": len(orders),
             "orders_paid": orders_by_status.get("paid", 0),
+            "leads_total": len(leads),
             "revenue_paid": revenue_paid,
             "revenue_pending": revenue_pending,
             "visitors_by_status": visitors_by_status,

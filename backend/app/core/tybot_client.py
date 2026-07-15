@@ -34,43 +34,17 @@ class TybotClient:
     def __init__(self):
         self.base_url = settings.TYBOT_API_URL
         self.api_key = settings.TYBOT_API_KEY
-        self.base_id = settings.TYBOT_BASE_ID
         self._headers = {
             "Content-Type": "application/json",
             "accept": "application/json",
-            "Accept-Profile": self.base_id,
-            "Content-Profile": self.base_id,
             "Authorization": self.api_key,
         }
 
-    async def list(self, table: str, params: dict | None = None) -> list[dict]:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{self.base_url}/api/v1/data/{table}",
-                headers=self._headers,
-                params=params or {},
-                timeout=15,
-            )
-            r.raise_for_status()
-            data = r.json()
-            return data if isinstance(data, list) else data.get("list", data.get("items", []))
-
-    async def get(self, table: str, record_id: str) -> dict | None:
-        async with httpx.AsyncClient() as client:
-            r = await client.get(
-                f"{self.base_url}/api/v1/data/{table}/{record_id}",
-                headers=self._headers,
-                timeout=15,
-            )
-            if r.status_code == 404:
-                return None
-            r.raise_for_status()
-            return r.json()
-
     async def list_by_table(self, table_id: str, params: dict | None = None) -> dict:
-        """List records via the SmartDB records endpoint. Works for any base
-        (unlike `list()`, which only works for base ids exposed on the PostgREST
-        schema whitelist — currently just the original Event Base)."""
+        """List records via the SmartDB records endpoint. Works for any base —
+        the only read pattern used across this app (see CLAUDE.md: only the
+        Evenements/CRM/Organisations/Participants/Revenu/Activite/Croissance
+        bases are used; the old Event Base is never queried)."""
         async with httpx.AsyncClient() as client:
             r = await client.get(
                 f"{self.base_url}/api/v1/smart-db/tables/{table_id}/records",

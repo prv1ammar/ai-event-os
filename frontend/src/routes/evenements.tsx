@@ -161,6 +161,7 @@ interface EventFormProps {
 }
 
 function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps) {
+  const qc = useQueryClient();
   const [form, setForm] = useState<Partial<Event>>({
     name: "", event_type: "conference", status: "draft", languages: ["fr"],
     start_date: "", end_date: "", is_free: false,
@@ -168,11 +169,30 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
     ...initial,
   });
   const [venueId, setVenueId] = useState<number | undefined>(initial.venues?.[0]?.id);
+  const [showNewVenue, setShowNewVenue] = useState(false);
+  const [newVenue, setNewVenue] = useState({ name: "", city: "", address: "", total_capacity: "", total_surface_sqm: "" });
 
   const { data: venues = [], isLoading: venuesLoading } = useQuery({
     queryKey: ["venue-options"],
     queryFn: fetchVenues,
     staleTime: 5 * 60 * 1000,
+  });
+
+  const createVenueMut = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = { name: newVenue.name };
+      if (newVenue.city) payload.city = newVenue.city;
+      if (newVenue.address) payload.address = newVenue.address;
+      if (newVenue.total_capacity) payload.total_capacity = newVenue.total_capacity;
+      if (newVenue.total_surface_sqm) payload.total_surface_sqm = newVenue.total_surface_sqm;
+      return smartDbRequest("venues", "POST", payload) as Promise<{ id: number; name: string }>;
+    },
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["venue-options"] });
+      setVenueId(created.id);
+      setShowNewVenue(false);
+      setNewVenue({ name: "", city: "", address: "", total_capacity: "", total_surface_sqm: "" });
+    },
   });
 
   function set(key: keyof Event, value: unknown) {
@@ -200,7 +220,13 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
 
       {/* Lieu */}
       <div className="grid gap-1.5">
-        <Label>Lieu</Label>
+        <div className="flex items-center justify-between">
+          <Label>Lieu</Label>
+          <button type="button" className="text-xs font-medium text-primary hover:underline"
+            onClick={() => setShowNewVenue((v) => !v)}>
+            {showNewVenue ? "Annuler" : "+ Nouveau lieu"}
+          </button>
+        </div>
         <Select
           value={venueId != null ? String(venueId) : "none"}
           onValueChange={(v) => setVenueId(v === "none" ? undefined : Number(v))}
@@ -213,6 +239,52 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
             ))}
           </SelectContent>
         </Select>
+
+        {showNewVenue && (
+          <div className="grid gap-3 rounded-lg border border-border p-3 mt-1"
+            onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+            <div className="grid gap-1.5">
+              <Label htmlFor="nv-name" className="text-xs">Nom du lieu *</Label>
+              <Input id="nv-name" className="h-8 text-sm" placeholder="Ex: Palais des Congrès"
+                value={newVenue.name} onChange={(e) => setNewVenue((v) => ({ ...v, name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-city" className="text-xs">Ville</Label>
+                <Input id="nv-city" className="h-8 text-sm" value={newVenue.city}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, city: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-address" className="text-xs">Adresse</Label>
+                <Input id="nv-address" className="h-8 text-sm" value={newVenue.address}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, address: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-capacity" className="text-xs">Capacité</Label>
+                <Input id="nv-capacity" type="number" min="0" className="h-8 text-sm" value={newVenue.total_capacity}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, total_capacity: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-surface" className="text-xs">Surface (m²)</Label>
+                <Input id="nv-surface" type="number" min="0" step="0.01" className="h-8 text-sm" value={newVenue.total_surface_sqm}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, total_surface_sqm: e.target.value }))} />
+              </div>
+            </div>
+            {createVenueMut.isError && (
+              <p className="text-xs text-destructive">{(createVenueMut.error as Error).message}</p>
+            )}
+            <div className="flex justify-end">
+              <Button type="button" size="sm" className="h-8 text-xs bg-gradient-primary text-primary-foreground"
+                disabled={!newVenue.name || createVenueMut.isPending}
+                onClick={() => createVenueMut.mutate()}>
+                {createVenueMut.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                Créer le lieu
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Type + Status */}
