@@ -1,6 +1,8 @@
 """
-app/routers/meetings.py — CRUD for B2B meetings via TybotFlow SmartDB
-Table: b2b_meetings | Base: Activite (pmr53lflvmgxw) | ID: m22b1dc3853e06450
+app/routers/venues.py — CRUD for venues via TybotFlow SmartDB
+Table: venues | Base: Evenements (pmr53j9yjvo1c) | ID: maeaf41fb5ddb9049
+
+Each venue links to at most one event via events_id.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,15 +10,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE_ID = "m22b1dc3853e06450"
+TABLE_ID = "maeaf41fb5ddb9049"
 
-router = APIRouter(prefix="/api/v1/meetings", tags=["Meetings"])
+router = APIRouter(prefix="/api/v1/venues", tags=["Venues"])
 
 
-@router.get("", summary="List meetings")
-async def list_meetings(
+@router.get("", summary="List venues")
+async def list_venues(
     page: int = Query(1, ge=1),
-    limit: int = Query(20, ge=1, le=500),
+    limit: int = Query(100, ge=1, le=500),
     event_id: int = Query(None),
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
@@ -27,8 +29,8 @@ async def list_meetings(
     return await tybot.list_by_table(TABLE_ID, params)
 
 
-@router.post("", status_code=201, summary="Schedule a meeting")
-async def create_meeting(
+@router.post("", status_code=201, summary="Create venue")
+async def create_venue(
     data: dict,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
@@ -36,34 +38,34 @@ async def create_meeting(
     return await tybot.create(TABLE_ID, data)
 
 
-@router.get("/{meeting_id}", summary="Get meeting by ID")
-async def get_meeting(
-    meeting_id: int,
+@router.get("/{venue_id}", summary="Get venue by ID")
+async def get_venue(
+    venue_id: int,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get_by_table(TABLE_ID, str(meeting_id))
+    record = await tybot.get_by_table(TABLE_ID, str(venue_id))
     if not record:
-        raise HTTPException(status_code=404, detail="Meeting not found")
+        raise HTTPException(status_code=404, detail="Venue not found")
     return record
 
 
-@router.patch("/{meeting_id}", summary="Update meeting")
-async def update_meeting(
-    meeting_id: int,
+@router.patch("/{venue_id}", summary="Update venue")
+async def update_venue(
+    venue_id: int,
     data: dict,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    data["id"] = meeting_id
+    data["id"] = venue_id
     return await tybot.update(TABLE_ID, data)
 
 
-@router.delete("/{meeting_id}", summary="Delete meeting")
-async def delete_meeting(
-    meeting_id: int,
+@router.delete("/{venue_id}", summary="Delete venue")
+async def delete_venue(
+    venue_id: int,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    await tybot.delete(TABLE_ID, str(meeting_id))
+    await tybot.delete(TABLE_ID, str(venue_id))
     return {"message": "Deleted"}

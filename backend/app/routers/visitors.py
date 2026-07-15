@@ -1,6 +1,6 @@
 """
 app/routers/visitors.py — CRUD for visitors via TybotFlow SmartDB
-Table: visitors | ID: mczsulpngbjjif5
+Table: visiteurs | Base: Participants (pmr53k2m2uh2j) | ID: m3b5a520cdf13cc6e
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "visitors"
-TABLE_ID = "mczsulpngbjjif5"
+TABLE_ID = "m3b5a520cdf13cc6e"
 
 router = APIRouter(prefix="/api/v1/visitors", tags=["Visitors"])
 
@@ -22,11 +21,10 @@ async def list_visitors(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    rows = await tybot.list(TABLE, {"limit": 500})
-    if event_id is not None:
-        rows = [r for r in rows if r.get("event_id") == event_id]
-    start = (page - 1) * limit
-    return rows[start : start + limit]
+    params = {"limit": limit, "offset": (page - 1) * limit}
+    if event_id:
+        params["where"] = f"(events_id,eq,{event_id})"
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create visitor")
@@ -44,7 +42,7 @@ async def get_visitor(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(visitor_id))
+    record = await tybot.get_by_table(TABLE_ID, str(visitor_id))
     if not record:
         raise HTTPException(status_code=404, detail="Visitor not found")
     return record

@@ -1,6 +1,11 @@
 """
-app/routers/scans.py — QR scan recording + visitor lookup
-Table: qr_scans | ID: mfvqg4myn20sf2l
+app/routers/scans.py — QR scan recording + participant lookup
+Table: scans | Base: Activite (pmr53lflvmgxw) | ID: maf1b42df8c437952
+
+Lookup accepts either:
+  - a real badge QR code (badges.qr_code, e.g. "QR-AITF-VIS-0001")
+  - the app-generated format "AIEVENT|{id}|{kind}|{code}" where kind is
+    "visitor"/"exhibitor" (badge previews rendered in the UI)
 """
 
 from datetime import datetime, timezone
@@ -9,10 +14,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "qr_scans"
-TABLE_ID = "mfvqg4myn20sf2l"
-VISITORS_TABLE = "visitors"
-BADGES_TABLE = "badges"
+SCANS_TABLE_ID = "maf1b42df8c437952"       # Activite base
+BADGES_TABLE_ID = "mdea2e70ebbb76e7d"      # Participants base
+VISITEURS_TABLE_ID = "m3b5a520cdf13cc6e"   # Participants base
+EXPOSANTS_TABLE_ID = "m0b2dd0eb02083bf3"   # Participants base
 
 router = APIRouter(prefix="/api/v1/scans", tags=["Scans"])
 
@@ -27,8 +32,8 @@ async def list_scans(
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
     if event_id:
-        params["where"] = f"(event_id,eq,{event_id})"
-    return await tybot.list(TABLE, params)
+        params["where"] = f"(events_id,eq,{event_id})"
+    return await tybot.list_by_table(SCANS_TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Record a QR scan")
@@ -37,7 +42,7 @@ async def create_scan(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    return await tybot.create(TABLE_ID, data)
+    return await tybot.create(SCANS_TABLE_ID, data)
 
 
 @router.get("/{scan_id}", summary="Get scan by ID")
@@ -46,77 +51,107 @@ async def get_scan(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(scan_id))
+    record = await tybot.get_by_table(SCANS_TABLE_ID, str(scan_id))
     if not record:
         raise HTTPException(status_code=404, detail="Scan not found")
     return record
 
 
-@router.post("/lookup", summary="Lookup visitor by scanned QR code and record the scan")
+async def _find_badge_by_qr(tybot: TybotClient, qr: str) -> dict | None:
+    try:
+        data = await tybot.list_by_table(BADGES_TABLE_ID, {"limit": 500})
+    except Exception:
+        return None
+    for b in data.get("list", []):
+        if str(b.get("qr_code") or "") == qr:
+            return b
+    return None
+
+
+@router.post("/lookup", summary="Lookup participant by scanned QR code and record the scan")
 async def lookup_qr(
     data: dict,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
     """
-    Accepts { qr_data: "AIEVENT|visitor_id|badge_type|badge_number", event_id?: int }
-    Returns visitor info and records the scan.
+    Accepts { qr_data: str, event_id?: int, scan_point?: str }
+    Returns participant info and records the scan in the Activite base.
     """
-    qr_data: str = data.get("qr_data", "")
+    qr_data: str = (data.get("qr_data") or "").strip()
     event_id = data.get("event_id")
+    scan_point = data.get("scan_point") or "Scanner mobile"
 
-    # Parse QR format: AIEVENT|{visitor_id}|{badge_type}|{badge_number}
-    visitor_id = None
-    badge_type = None
-    badge_number = None
+    if not qr_data:
+        raise HTTPException(status_code=422, detail="QR code vide")
 
-    if qr_data.startswith("AIEVENT|"):
+    participant: dict | None = None
+    participant_kind = "visitor"
+    badge: dict | None = None
+
+    # 1) Real badge QR code
+    badge = await _find_badge_by_qr(tybot, qr_data)
+    if badge:
+        if badge.get("visiteurs_id"):
+            participant = await tybot.get_by_table(VISITEURS_TABLE_ID, str(badge["visiteurs_id"]))
+            participant_kind = "visitor"
+        elif badge.get("exposants_id"):
+            participant = await tybot.get_by_table(EXPOSANTS_TABLE_ID, str(badge["exposants_id"]))
+            participant_kind = "exhibitor"
+        else:
+            # badge belongs to vip/staff/sponsor/partenaire — return the embedded ref
+            for kind in ("vip", "staff", "sponsors", "partenaires"):
+                if badge.get(kind):
+                    participant = badge[kind]
+                    participant_kind = kind
+                    break
+
+    # 2) App-generated format AIEVENT|{id}|{kind}|{code}
+    elif qr_data.startswith("AIEVENT|"):
         parts = qr_data.split("|")
-        if len(parts) >= 2:
-            try:
-                visitor_id = int(parts[1])
-            except ValueError:
-                pass
-        badge_type = parts[2] if len(parts) > 2 else None
-        badge_number = parts[3] if len(parts) > 3 else None
+        try:
+            pid = int(parts[1])
+        except (IndexError, ValueError):
+            raise HTTPException(status_code=422, detail="Format de QR code invalide")
+        kind = parts[2] if len(parts) > 2 else "visitor"
+        if kind == "exhibitor":
+            participant = await tybot.get_by_table(EXPOSANTS_TABLE_ID, str(pid))
+            participant_kind = "exhibitor"
+        else:
+            participant = await tybot.get_by_table(VISITEURS_TABLE_ID, str(pid))
+            participant_kind = "visitor"
 
-    if not visitor_id:
-        raise HTTPException(status_code=422, detail="Invalid QR code format")
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant introuvable pour ce QR code")
 
-    # Find the visitor
-    visitors = await tybot.list(VISITORS_TABLE, {"limit": 500})
-    visitor = next((v for v in visitors if str(v.get("id", "")) == str(visitor_id)), None)
-
-    if not visitor:
-        raise HTTPException(status_code=404, detail="Visiteur introuvable")
-
-    # Find badge if available
-    badge = None
-    if visitor.get("badges_id"):
-        badges = await tybot.list(BADGES_TABLE, {"limit": 500})
-        badge = next((b for b in badges if str(b.get("id", "")) == str(visitor["badges_id"])), None)
-
-    # Record the scan
-    scan_payload = {
-        "qr_code": qr_data,
-        "scan_time": datetime.now(timezone.utc).isoformat(),
-        "badge_type": badge_type or visitor.get("visitor_type", "standard"),
-        "status": "success",
+    # ── Record the scan (best effort) ───────────────────────────────────────────
+    scan_payload: dict = {
+        "scan_type": "event_entry",
+        "direction": "in",
+        "scan_point_name": scan_point,
+        "scanned_at": datetime.now(timezone.utc).isoformat(),
     }
     if event_id:
-        scan_payload["event_id"] = event_id
-    if visitor_id:
-        scan_payload["visitor_id"] = visitor_id
+        scan_payload["events_id"] = event_id
+    elif participant.get("events_id"):
+        scan_payload["events_id"] = participant["events_id"]
+    if badge:
+        scan_payload["badges_id"] = badge.get("id")
+    if participant_kind == "visitor":
+        scan_payload["visiteurs_id"] = participant.get("id")
+    elif participant_kind == "exhibitor":
+        scan_payload["exposants_id"] = participant.get("id")
 
     try:
-        await tybot.create(TABLE_ID, scan_payload)
+        await tybot.create(SCANS_TABLE_ID, scan_payload)
     except Exception:
         pass  # don't fail the lookup if scan recording fails
 
     return {
         "status": "success",
-        "visitor": visitor,
+        "participant_kind": participant_kind,
+        "visitor": participant,
         "badge": badge,
-        "badge_type": badge_type or visitor.get("visitor_type", "standard"),
-        "badge_number": badge_number or badge.get("badge_number") if badge else None,
+        "badge_type": participant_kind,
+        "badge_number": (badge or {}).get("badge_number"),
     }

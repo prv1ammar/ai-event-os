@@ -1,13 +1,13 @@
 """
 app/routers/reports.py — Data export endpoints
-Supports CSV and JSON exports for leads, visitors, exhibitors, sessions, events.
+Supports CSV and JSON exports for the new multi-base tables.
 """
 
 import csv
 import io
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from app.core.tybot_client import TybotClient, get_tybot
@@ -15,7 +15,15 @@ from app.core.security import get_current_user
 
 router = APIRouter(prefix="/api/v1/reports", tags=["Reports"])
 
-ALLOWED_TABLES = {"leads", "visitors", "exhibitors", "sessions", "events"}
+# Logical export name → SmartDB table id (new bases)
+TABLE_IDS = {
+    "leads": "m78f17b1f5fcb640d",       # contacts (CRM)
+    "visitors": "m3b5a520cdf13cc6e",    # visiteurs (Participants)
+    "exhibitors": "m0b2dd0eb02083bf3",  # exposants (Participants)
+    "sessions": "mabd59f3b36f4df83",    # sessions (Evenements)
+    "events": "m3ae0796104dae2e3",      # events (Evenements)
+    "orders": "m0067719083ff9860",      # orders (Revenu)
+}
 
 
 @router.get("", summary="List reports")
@@ -25,6 +33,7 @@ async def list_reports():
         {"id": "visitors", "label": "Données visiteurs", "format": "csv"},
         {"id": "exhibitors", "label": "Données exposants", "format": "csv"},
         {"id": "sessions", "label": "Programme sessions", "format": "csv"},
+        {"id": "orders", "label": "Commandes", "format": "csv"},
     ]
 
 
@@ -36,11 +45,11 @@ async def export_report(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    if table not in ALLOWED_TABLES:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=400, detail=f"Table must be one of {ALLOWED_TABLES}")
+    if table not in TABLE_IDS:
+        raise HTTPException(status_code=400, detail=f"Table must be one of {set(TABLE_IDS)}")
 
-    records = await tybot.list(table, {"limit": limit, "offset": 0})
+    data = await tybot.list_by_table(TABLE_IDS[table], {"limit": limit})
+    records = data.get("list", [])
 
     if format == "json":
         import json
@@ -51,11 +60,13 @@ async def export_report(
             headers={"Content-Disposition": f"attachment; filename={table}_export.json"},
         )
 
-    # CSV export — strip internal NocoDB fields
-    SKIP = {"created_by", "updated_by", "nc_order"}
+    # CSV export — keep scalar columns only (relations come back as dicts/lists)
     output = io.StringIO()
     if records:
-        fieldnames = [k for k in records[0].keys() if k not in SKIP]
+        fieldnames = [
+            k for k, v in records[0].items()
+            if not isinstance(v, (dict, list)) and k not in {"Created At", "Updated At"}
+        ]
         writer = csv.DictWriter(
             output, fieldnames=fieldnames, extrasaction="ignore", lineterminator="\n"
         )

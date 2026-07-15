@@ -25,11 +25,14 @@ from app.routers.sessions import router as sessions_router
 from app.routers.leads import router as leads_router
 from app.routers.meetings import router as meetings_router
 from app.routers.payments import router as payments_router
+from app.routers.orders import router as orders_router
 from app.routers.campaigns import router as campaigns_router
 from app.routers.landing_pages import router as landing_pages_router
 from app.routers.analytics import router as analytics_router
 from app.routers.speakers import router as speakers_router
 from app.routers.event_exhibitors import router as event_exhibitors_router
+from app.routers.venues import router as venues_router
+from app.routers.vip import router as vip_router
 
 # ── Phase 3: Visitors / QR / Badges / Scans ───────────────────────────────────
 from app.routers.badges import router as badges_router
@@ -94,11 +97,14 @@ app.include_router(sessions_router)
 app.include_router(leads_router)
 app.include_router(meetings_router)
 app.include_router(payments_router)
+app.include_router(orders_router)
 app.include_router(campaigns_router)
 app.include_router(landing_pages_router)
 app.include_router(analytics_router)
 app.include_router(speakers_router)
 app.include_router(event_exhibitors_router)
+app.include_router(venues_router)
+app.include_router(vip_router)
 
 # ── Phase 3 routers ────────────────────────────────────────────────────────────
 app.include_router(badges_router)

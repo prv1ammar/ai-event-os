@@ -2,13 +2,12 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  Plus, Search, Eye, Pencil, MoreHorizontal, Users, Globe,
-  Download, ChevronLeft, ChevronRight, Loader2, AlertCircle, TrendingUp, Trash2, X, Calendar,
+  Plus, Search, Eye, Pencil, MoreHorizontal, Users, CheckCircle2, Clock3,
+  Download, ChevronLeft, ChevronRight, Loader2, AlertCircle, Trash2, X, Crown, Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -29,7 +28,6 @@ import {
 import QRCode from "react-qr-code";
 import { cn } from "@/lib/utils";
 import { apiRequest, smartDbRequest } from "@/lib/api";
-import { useEvent } from "@/lib/event-context";
 
 export const Route = createFileRoute("/exposants")({
   component: ExposantsPage,
@@ -41,24 +39,42 @@ export const Route = createFileRoute("/exposants")({
   }),
 });
 
+interface RelatedRef { id: number; name?: string; first_name?: string; order_number?: string }
+interface VipRef { id: number; vip_level?: string; first_name?: string }
+
 interface Exhibitor {
   id: number;
-  company_name?: string;
-  sector?: string;
-  website?: string;
-  country?: string;
-  city?: string;
+  first_name: string;
+  last_name?: string;
   email?: string;
   phone?: string;
-  description?: string;
-  company_size?: string;
-  employee_count?: number;
-  annual_revenue?: number;
-  export_experience?: string;
-  event_id?: number;
-  leads_id?: number | null;
-  event_ids?: string | null;
+  company_name?: string;
+  registration_status?: string;
+  registration_date?: string;
+  arrived_at?: string;
+  events_id?: number;
+  contacts_id?: number;
+  events?: RelatedRef;
+  contacts?: RelatedRef;
+  badges?: unknown[];
+  scans?: unknown[];
+  "b2b meetings"?: unknown[];
+  vip?: VipRef[];
+  "verified company name"?: string | null;
   [key: string]: unknown;
+}
+
+const VIP_LEVELS = ["standard", "premium", "diamant"];
+const VIP_LEVEL_LABELS: Record<string, string> = {
+  standard: "Standard", premium: "Premium", diamant: "Diamant",
+};
+interface VipInfo { isVip: boolean; level: string; existingId?: number }
+
+function isVip(ex: Exhibitor): boolean {
+  return (ex.vip?.length ?? 0) > 0;
+}
+function vipLevelOf(ex: Exhibitor): string | undefined {
+  return ex.vip?.[0]?.vip_level;
 }
 
 interface EventOption { id: number; name: string }
@@ -66,7 +82,7 @@ interface EventOption { id: number; name: string }
 async function fetchEventOptions(): Promise<EventOption[]> {
   const raw = await apiRequest<EventOption[] | { list: EventOption[] }>("/api/v1/events?limit=100");
   const rows = Array.isArray(raw) ? raw : (raw.list ?? []);
-  return rows.map((e) => ({ id: Number(e.id), name: String((e as Record<string, unknown>).name ?? `Event #${e.id}`) }));
+  return rows.map((e) => ({ id: Number(e.id), name: String(e.name ?? `Event #${e.id}`) }));
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
@@ -78,26 +94,36 @@ async function fetchExhibitors(eventId: string | null): Promise<Exhibitor[]> {
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
-async function assignToEvent(exhibitorId: number, eventId: number): Promise<void> {
-  await apiRequest(`/api/v1/exhibitors/${exhibitorId}/assign-event`, {
-    method: "POST",
-    body: JSON.stringify({ event_id: eventId }),
-  });
+async function syncVip(person: Partial<Exhibitor>, personId: number, vipInfo: VipInfo): Promise<void> {
+  const vipPayload = {
+    first_name: person.first_name,
+    last_name: person.last_name,
+    email: person.email,
+    phone: person.phone,
+    company_name: person.company_name,
+    vip_level: vipInfo.level,
+    events_id: person.events_id,
+    exposants_id: personId,
+  };
+  if (vipInfo.isVip) {
+    if (vipInfo.existingId) {
+      await smartDbRequest("vip", "PATCH", { id: vipInfo.existingId, ...vipPayload });
+    } else {
+      await smartDbRequest("vip", "POST", vipPayload as Record<string, unknown>);
+    }
+  } else if (vipInfo.existingId) {
+    await smartDbRequest("vip", "DELETE", { id: vipInfo.existingId });
+  }
 }
 
-async function removeFromEvent(exhibitorId: number, eventId: number): Promise<void> {
-  await apiRequest(`/api/v1/exhibitors/${exhibitorId}/unassign-event`, {
-    method: "POST",
-    body: JSON.stringify({ event_id: eventId }),
-  });
+async function createExhibitor({ data, vipInfo }: { data: Partial<Exhibitor>; vipInfo: VipInfo }): Promise<void> {
+  const created = await smartDbRequest("exhibitors", "POST", data as Record<string, unknown>) as { id: number };
+  await syncVip(data, created.id, vipInfo);
 }
 
-async function createExhibitor(data: Partial<Exhibitor>): Promise<void> {
-  await smartDbRequest("exhibitors", "POST", data as Record<string, unknown>);
-}
-
-async function updateExhibitor({ id, data }: { id: number; data: Partial<Exhibitor> }): Promise<void> {
+async function updateExhibitor({ id, data, vipInfo }: { id: number; data: Partial<Exhibitor>; vipInfo: VipInfo }): Promise<void> {
   await smartDbRequest("exhibitors", "PATCH", { id, ...data });
+  await syncVip(data, id, vipInfo);
 }
 
 async function deleteExhibitor(id: number): Promise<void> {
@@ -105,26 +131,27 @@ async function deleteExhibitor(id: number): Promise<void> {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const EXPERIENCE_LABELS: Record<string, string> = {
-  global: "Global", international: "International",
-  regional: "Régional", local: "Local",
+const STATUS_LABELS: Record<string, string> = {
+  pending: "En attente", confirmed: "Confirmé", cancelled: "Annulé", no_show: "Absent",
 };
-const experienceStyles: Record<string, string> = {
-  global: "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/20",
-  international: "bg-sky-500/10 text-sky-600 ring-1 ring-inset ring-sky-500/20",
-  regional: "bg-amber-500/10 text-amber-600 ring-1 ring-inset ring-amber-500/20",
-  local: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
+const statusStyles: Record<string, string> = {
+  pending: "bg-amber-500/10 text-amber-600 ring-1 ring-inset ring-amber-500/20",
+  confirmed: "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/20",
+  cancelled: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
+  no_show: "bg-rose-500/10 text-rose-600 ring-1 ring-inset ring-rose-500/20",
 };
 const toneStyles: Record<string, string> = {
   primary: "bg-primary/10 text-primary", green: "bg-emerald-500/10 text-emerald-600",
   amber: "bg-amber-500/10 text-amber-600", blue: "bg-sky-500/10 text-sky-600",
 };
 
-function formatRevenue(val?: number): string {
-  if (!val) return "—";
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)}M MAD`;
-  if (val >= 1_000) return `${Math.round(val / 1_000)}K MAD`;
-  return `${val} MAD`;
+function fullName(ex: Exhibitor): string {
+  return [ex.first_name, ex.last_name].filter(Boolean).join(" ") || `Exposant #${ex.id}`;
+}
+
+function fmtDateTime(iso?: string): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("fr-FR", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function LogoInitials({ name }: { name: string }) {
@@ -136,122 +163,43 @@ function LogoInitials({ name }: { name: string }) {
   );
 }
 
-// ─── Events Assignment Panel ──────────────────────────────────────────────────
-function EventsAssignment({ exhibitor }: { exhibitor: Exhibitor }) {
-  const qc = useQueryClient();
-  const { allEvents } = useEvent();
-  const [adding, setAdding] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [selectedEventId, setSelectedEventId] = useState("");
-
-  const assignedIds = new Set(
-    String(exhibitor.event_ids ?? "").split(",").map((v) => v.trim()).filter(Boolean)
-  );
-  const unassigned = allEvents.filter((e) => !assignedIds.has(String(e.id)));
-
-  async function handleAssign() {
-    if (!selectedEventId) return;
-    setSaving(true);
-    try {
-      await assignToEvent(exhibitor.id, Number(selectedEventId));
-      qc.invalidateQueries({ queryKey: ["exhibitors"] });
-      setAdding(false);
-      setSelectedEventId("");
-    } finally { setSaving(false); }
-  }
-
-  async function handleRemove(evId: string) {
-    setSaving(true);
-    try {
-      await removeFromEvent(exhibitor.id, Number(evId));
-      qc.invalidateQueries({ queryKey: ["exhibitors"] });
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="rounded-lg bg-muted/40 p-3 space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-          <Calendar className="h-3 w-3" /> Événements assignés
-        </p>
-        {unassigned.length > 0 && !adding && (
-          <button onClick={() => setAdding(true)} className="text-xs text-primary hover:underline font-medium">
-            + Ajouter
-          </button>
-        )}
-      </div>
-
-      {assignedIds.size === 0 && !adding ? (
-        <p className="text-xs text-muted-foreground italic">Aucun événement assigné.</p>
-      ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {[...assignedIds].map((evId) => {
-            const ev = allEvents.find((e) => String(e.id) === evId);
-            return (
-              <span key={evId} className="inline-flex items-center gap-1 rounded-md bg-primary/10 text-primary px-2 py-0.5 text-xs font-medium">
-                {ev?.name ?? `Événement #${evId}`}
-                <button onClick={() => handleRemove(evId)} disabled={saving}
-                  className="ml-0.5 hover:text-destructive transition-colors disabled:opacity-50">
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      )}
-
-      {adding && (
-        <div className="flex items-center gap-2 pt-1">
-          <Select value={selectedEventId} onValueChange={setSelectedEventId}>
-            <SelectTrigger className="h-8 flex-1 text-xs">
-              <SelectValue placeholder="Choisir un événement…" />
-            </SelectTrigger>
-            <SelectContent>
-              {unassigned.map((e) => (
-                <SelectItem key={e.id} value={String(e.id)} className="text-xs">{e.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button size="sm" className="h-8 text-xs" onClick={handleAssign} disabled={!selectedEventId || saving}>
-            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Assigner"}
-          </Button>
-          <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={() => { setAdding(false); setSelectedEventId(""); }}>
-            <X className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Exhibitor Detail ─────────────────────────────────────────────────────────
 function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
-  const exp = ex.export_experience ?? "";
+  const status = ex.registration_status ?? "";
+  const badgeCount = ex.badges?.length ?? 0;
+  const scanCount = ex.scans?.length ?? 0;
+  const meetingCount = ex["b2b meetings"]?.length ?? 0;
+  const vip = isVip(ex);
   return (
     <div className="space-y-4 py-2">
       <div className="flex items-center gap-3">
-        <LogoInitials name={ex.company_name ?? `#${ex.id}`} />
+        <LogoInitials name={ex.company_name ?? fullName(ex)} />
         <div>
           <p className="font-semibold text-foreground">{ex.company_name ?? `Exposant #${ex.id}`}</p>
-          <p className="text-xs text-muted-foreground">{ex.sector ?? "—"}</p>
+          <p className="text-xs text-muted-foreground">{fullName(ex)}</p>
         </div>
-        {exp && (
-          <span className={cn("ml-auto inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", experienceStyles[exp] ?? "bg-muted text-muted-foreground")}>
-            {EXPERIENCE_LABELS[exp] ?? exp}
-          </span>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          {vip && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-amber-500/15 text-amber-700 ring-1 ring-inset ring-amber-500/25 px-2 py-0.5 text-xs font-medium">
+              <Crown className="h-3 w-3" /> VIP {vipLevelOf(ex) ? `· ${VIP_LEVEL_LABELS[vipLevelOf(ex)!] ?? vipLevelOf(ex)}` : ""}
+            </span>
+          )}
+          {status && (
+            <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", statusStyles[status] ?? "bg-muted text-muted-foreground")}>
+              {STATUS_LABELS[status] ?? status}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
         {[
           { label: "Email", value: ex.email ?? "—" },
           { label: "Téléphone", value: ex.phone ?? "—" },
-          { label: "Ville", value: ex.city ?? "—" },
-          { label: "Pays", value: ex.country ?? "—" },
-          { label: "Taille", value: ex.company_size ?? (ex.employee_count ? `${ex.employee_count} emp.` : "—") },
-          { label: "CA annuel", value: formatRevenue(ex.annual_revenue) },
-          { label: "Site web", value: ex.website ?? "—" },
-          { label: "Leads ID", value: ex.leads_id != null ? String(ex.leads_id) : "—" },
+          { label: "Événement", value: ex.events?.name ?? "—" },
+          { label: "Société vérifiée (CRM)", value: ex["verified company name"] ?? "—" },
+          { label: "Date d'inscription", value: fmtDateTime(ex.registration_date) },
+          { label: "Arrivée sur site", value: fmtDateTime(ex.arrived_at) },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg bg-muted/40 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
@@ -260,12 +208,18 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
         ))}
       </div>
 
-      {ex.description && (
-        <div className="rounded-lg bg-muted/40 px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Description</p>
-          <p className="text-sm text-foreground leading-relaxed">{ex.description}</p>
-        </div>
-      )}
+      <div className="grid grid-cols-3 gap-3 text-sm">
+        {[
+          { label: "Badges", value: badgeCount },
+          { label: "Scans", value: scanCount },
+          { label: "RDV B2B", value: meetingCount },
+        ].map(({ label, value }) => (
+          <div key={label} className="rounded-lg bg-muted/40 px-3 py-2 text-center">
+            <p className="text-lg font-bold text-foreground">{value}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
+          </div>
+        ))}
+      </div>
 
       {/* Badge d'accès */}
       <div className="rounded-lg bg-muted/40 p-3 space-y-3">
@@ -280,8 +234,8 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
               {(ex.company_name ?? "EX").slice(0, 2).toUpperCase()}
             </div>
             <div className="text-center">
-              <p className="text-xs font-bold text-gray-900">{ex.company_name ?? `Exposant #${ex.id}`}</p>
-              <p className="text-[10px] text-gray-400">{ex.sector ?? "—"}</p>
+              <p className="text-xs font-bold text-gray-900">{ex.company_name ?? fullName(ex)}</p>
+              <p className="text-[10px] text-gray-400">{fullName(ex)}</p>
             </div>
             <div className="p-2 rounded-lg bg-white border border-border">
               <QRCode
@@ -304,8 +258,6 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
           </button>
         </div>
       </div>
-
-      <EventsAssignment exhibitor={ex} />
     </div>
   );
 }
@@ -313,12 +265,18 @@ function ExhibitorDetail({ ex }: { ex: Exhibitor }) {
 // ─── Exhibitor Form ───────────────────────────────────────────────────────────
 interface ExhibitorFormProps {
   initial?: Partial<Exhibitor>;
-  onSubmit: (data: Partial<Exhibitor>) => void;
+  onSubmit: (data: Partial<Exhibitor>, vipInfo: VipInfo) => void;
   onCancel: () => void;
   loading: boolean;
+  activeEventId?: number;
 }
 
-function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorFormProps) {
+function toDatetimeLocal(iso?: string): string {
+  if (!iso) return "";
+  return iso.slice(0, 16);
+}
+
+function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading, activeEventId }: ExhibitorFormProps) {
   const { data: events = [] } = useQuery({
     queryKey: ["event-options"],
     queryFn: fetchEventOptions,
@@ -326,12 +284,14 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
   });
 
   const [form, setForm] = useState<Partial<Exhibitor>>({
-    company_name: "", sector: "", email: "", phone: "", website: "",
-    city: "", country: "", company_size: "", employee_count: undefined,
-    annual_revenue: undefined, export_experience: "local", description: "",
-    event_id: undefined,
+    first_name: "", last_name: "", email: "", phone: "", company_name: "",
+    registration_status: "pending",
+    events_id: activeEventId,
     ...initial,
   });
+  const existingVip = initial.vip?.[0];
+  const [isVipChecked, setIsVipChecked] = useState(!!existingVip);
+  const [vipLevel, setVipLevel] = useState(existingVip?.vip_level ?? "standard");
 
   function set(key: keyof Exhibitor, value: unknown) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -340,23 +300,33 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload = { ...form };
-    if (!payload.description) delete payload.description;
-    if (!payload.website) delete payload.website;
-    onSubmit(payload);
+    delete payload.events;
+    delete payload.contacts;
+    delete payload.badges;
+    delete payload.scans;
+    delete payload["b2b meetings"];
+    delete payload.vip;
+    delete payload["verified company name"];
+    if (!payload.last_name) delete payload.last_name;
+    if (!payload.email) delete payload.email;
+    if (!payload.phone) delete payload.phone;
+    if (!payload.registration_date) delete payload.registration_date;
+    if (!payload.arrived_at) delete payload.arrived_at;
+    onSubmit(payload, { isVip: isVipChecked, level: vipLevel, existingId: existingVip?.id });
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
       {/* Event assignment */}
       <div className="grid gap-1.5">
-        <Label>Événement</Label>
+        <Label>Événement *</Label>
         <Select
-          value={form.event_id != null ? String(form.event_id) : "none"}
-          onValueChange={(v) => set("event_id", v === "none" ? undefined : Number(v))}
+          required
+          value={form.events_id != null ? String(form.events_id) : ""}
+          onValueChange={(v) => set("events_id", Number(v))}
         >
           <SelectTrigger><SelectValue placeholder="Sélectionner un événement" /></SelectTrigger>
           <SelectContent>
-            <SelectItem value="none">Aucun événement</SelectItem>
             {events.map((e) => (
               <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
             ))}
@@ -364,30 +334,23 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
         </Select>
       </div>
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="company_name">Nom de la société *</Label>
-        <Input id="company_name" required placeholder="Ex: Atlas Fruits" value={form.company_name ?? ""}
-          onChange={(e) => set("company_name", e.target.value)} />
-      </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="sector">Secteur</Label>
-          <Input id="sector" placeholder="Ex: Agroalimentaire" value={form.sector ?? ""}
-            onChange={(e) => set("sector", e.target.value)} />
+          <Label htmlFor="first_name">Prénom *</Label>
+          <Input id="first_name" required placeholder="Ex: Nawal" value={form.first_name ?? ""}
+            onChange={(e) => set("first_name", e.target.value)} />
         </div>
         <div className="grid gap-1.5">
-          <Label>Expérience export</Label>
-          <Select value={form.export_experience ?? "local"} onValueChange={(v) => set("export_experience", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="local">Local</SelectItem>
-              <SelectItem value="regional">Régional</SelectItem>
-              <SelectItem value="international">International</SelectItem>
-              <SelectItem value="global">Global</SelectItem>
-            </SelectContent>
-          </Select>
+          <Label htmlFor="last_name">Nom</Label>
+          <Input id="last_name" placeholder="Ex: Iraqi" value={form.last_name ?? ""}
+            onChange={(e) => set("last_name", e.target.value)} />
         </div>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor="company_name">Société</Label>
+        <Input id="company_name" placeholder="Ex: Atlas Cloud Solutions" value={form.company_name ?? ""}
+          onChange={(e) => set("company_name", e.target.value)} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -404,47 +367,60 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
       </div>
 
       <div className="grid gap-1.5">
-        <Label htmlFor="website">Site web</Label>
-        <Input id="website" placeholder="https://exemple.com" value={form.website ?? ""}
-          onChange={(e) => set("website", e.target.value)} />
+        <Label>Statut d'inscription</Label>
+        <Select value={form.registration_status ?? "pending"} onValueChange={(v) => set("registration_status", v)}>
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {Object.entries(STATUS_LABELS).map(([v, label]) => (
+              <SelectItem key={v} value={v}>{label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="city">Ville</Label>
-          <Input id="city" placeholder="Casablanca" value={form.city ?? ""}
-            onChange={(e) => set("city", e.target.value)} />
+          <Label htmlFor="registration_date">Date d'inscription</Label>
+          <Input id="registration_date" type="datetime-local"
+            value={toDatetimeLocal(form.registration_date as string)}
+            onChange={(e) => set("registration_date", e.target.value ? e.target.value + ":00" : undefined)} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="country">Pays</Label>
-          <Input id="country" placeholder="Morocco" value={form.country ?? ""}
-            onChange={(e) => set("country", e.target.value)} />
+          <Label htmlFor="arrived_at">Arrivée sur site</Label>
+          <Input id="arrived_at" type="datetime-local"
+            value={toDatetimeLocal(form.arrived_at as string)}
+            onChange={(e) => set("arrived_at", e.target.value ? e.target.value + ":00" : undefined)} />
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="company_size">Taille société</Label>
-          <Input id="company_size" placeholder="PME / GE…" value={form.company_size ?? ""}
-            onChange={(e) => set("company_size", e.target.value)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="employees">Employés</Label>
-          <Input id="employees" type="number" value={form.employee_count ?? ""}
-            onChange={(e) => set("employee_count", e.target.value ? Number(e.target.value) : undefined)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="revenue">CA annuel (MAD)</Label>
-          <Input id="revenue" type="number" value={form.annual_revenue ?? ""}
-            onChange={(e) => set("annual_revenue", e.target.value ? Number(e.target.value) : undefined)} />
-        </div>
-      </div>
+      <p className="text-xs text-muted-foreground -mt-2">
+        Les informations détaillées de la société (secteur, taille, site web…) se gèrent dans le CRM.
+      </p>
 
-      <div className="grid gap-1.5">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" rows={3} placeholder="Décrivez l'entreprise…"
-          value={form.description ?? ""} onChange={(e) => set("description", e.target.value)}
-          className="resize-none" />
+      <div className="grid gap-2 rounded-lg border border-border p-3">
+        <div className="flex items-center justify-between">
+          <Label className="flex items-center gap-1.5"><Crown className="h-3.5 w-3.5 text-amber-500" /> Invité VIP</Label>
+          <button type="button" onClick={() => setIsVipChecked((v) => !v)}
+            className={cn("rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+              isVipChecked ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground")}>
+            {isVipChecked ? "Oui" : "Non"}
+          </button>
+        </div>
+        {isVipChecked && (
+          <div className="flex flex-wrap gap-2 pt-1">
+            {VIP_LEVELS.map((lvl) => {
+              const active = vipLevel === lvl;
+              return (
+                <button key={lvl} type="button" onClick={() => setVipLevel(lvl)}
+                  className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                    active ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:border-primary/40")}>
+                  {VIP_LEVEL_LABELS[lvl]}
+                  {active && <Check className="h-3 w-3" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -461,11 +437,9 @@ function ExhibitorForm({ initial = {}, onSubmit, onCancel, loading }: ExhibitorF
 // ─── Main Page ────────────────────────────────────────────────────────────────
 function ExposantsPage() {
   const qc = useQueryClient();
-  const { activeEvent } = useEvent();
-  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
-  const [sectorFilter, setSectorFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [eventFilter, setEventFilter] = useState("all");
 
   const { data: events = [] } = useQuery({
@@ -473,7 +447,6 @@ function ExposantsPage() {
     queryFn: fetchEventOptions,
     staleTime: 5 * 60 * 1000,
   });
-  const eventMap = Object.fromEntries(events.map((e) => [e.id, e.name]));
 
   const [viewEx, setViewEx] = useState<Exhibitor | null>(null);
   const [editEx, setEditEx] = useState<Exhibitor | null>(null);
@@ -481,8 +454,8 @@ function ExposantsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Exhibitor | null>(null);
 
   const { data: exhibitors = [], isLoading, isError, error } = useQuery({
-    queryKey: ["exhibitors", eventId],
-    queryFn: () => fetchExhibitors(eventId),
+    queryKey: ["exhibitors", eventFilter],
+    queryFn: () => fetchExhibitors(eventFilter !== "all" ? eventFilter : null),
     staleTime: 60_000,
   });
 
@@ -499,13 +472,14 @@ function ExposantsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["exhibitors"] }); setDeleteTarget(null); },
   });
 
-  const sectors = Array.from(new Set(exhibitors.map((e) => e.sector).filter(Boolean))) as string[];
-
   const filtered = exhibitors.filter((e) => {
-    const name = (e.company_name ?? "").toLowerCase();
-    if (search && !name.includes(search.toLowerCase())) return false;
-    if (sectorFilter !== "all" && e.sector !== sectorFilter) return false;
-    if (eventFilter !== "all" && String(e.event_id ?? "") !== eventFilter) return false;
+    const q = search.toLowerCase();
+    if (search) {
+      const matches = [e.company_name, e.first_name, e.last_name, e.email]
+        .filter(Boolean).some((v) => String(v).toLowerCase().includes(q));
+      if (!matches) return false;
+    }
+    if (statusFilter !== "all" && e.registration_status !== statusFilter) return false;
     return true;
   });
 
@@ -513,23 +487,24 @@ function ExposantsPage() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  const totalRevenue = exhibitors.reduce((sum, e) => sum + (e.annual_revenue ?? 0), 0);
-  const withLeads = exhibitors.filter((e) => e.leads_id != null).length;
+  const confirmedCount = exhibitors.filter((e) => e.registration_status === "confirmed").length;
+  const pendingCount = exhibitors.filter((e) => e.registration_status === "pending").length;
+  const arrivedCount = exhibitors.filter((e) => !!e.arrived_at).length;
 
   const statsConfig = [
     { label: "Total exposants", value: isLoading ? "…" : String(exhibitors.length), icon: Users, tone: "primary" },
-    { label: "Pays représentés", value: isLoading ? "…" : String(new Set(exhibitors.map((e) => e.country)).size), icon: Globe, tone: "blue" },
-    { label: "CA cumulé", value: isLoading ? "…" : formatRevenue(totalRevenue), icon: TrendingUp, tone: "green" },
-    { label: "Avec leads", value: isLoading ? "…" : String(withLeads), icon: Users, tone: "amber" },
+    { label: "Confirmés", value: isLoading ? "…" : String(confirmedCount), icon: CheckCircle2, tone: "green" },
+    { label: "En attente", value: isLoading ? "…" : String(pendingCount), icon: Clock3, tone: "amber" },
+    { label: "Arrivés sur site", value: isLoading ? "…" : String(arrivedCount), icon: Users, tone: "blue" },
   ];
 
   // CSV export
   function handleExport() {
-    const headers = ["ID", "Société", "Secteur", "Email", "Téléphone", "Ville", "Pays", "Taille", "CA annuel", "Expérience"];
+    const headers = ["ID", "Prénom", "Nom", "Société", "Email", "Téléphone", "Statut", "Date inscription", "Arrivée", "Événement"];
     const rows = exhibitors.map((e) => [
-      e.id, e.company_name ?? "", e.sector ?? "", e.email ?? "", e.phone ?? "",
-      e.city ?? "", e.country ?? "", e.company_size ?? "",
-      e.annual_revenue ?? "", e.export_experience ?? "",
+      e.id, e.first_name ?? "", e.last_name ?? "", e.company_name ?? "", e.email ?? "", e.phone ?? "",
+      STATUS_LABELS[e.registration_status ?? ""] ?? e.registration_status ?? "",
+      e.registration_date ?? "", e.arrived_at ?? "", e.events?.name ?? "",
     ]);
     const csv = [headers, ...rows].map((r) => r.join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -591,16 +566,16 @@ function ExposantsPage() {
           </Select>
         )}
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => { setSectorFilter("all"); setPage(1); }}
+          <button onClick={() => { setStatusFilter("all"); setPage(1); }}
             className={cn("rounded-lg px-3 py-1.5 text-sm font-medium transition-colors border",
-              sectorFilter === "all" ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground")}>
+              statusFilter === "all" ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground")}>
             Tous
           </button>
-          {sectors.map((s) => (
-            <button key={s} onClick={() => { setSectorFilter(s); setPage(1); }}
+          {Object.entries(STATUS_LABELS).map(([v, label]) => (
+            <button key={v} onClick={() => { setStatusFilter(v); setPage(1); }}
               className={cn("rounded-lg px-3 py-1.5 text-sm font-medium transition-colors border",
-                sectorFilter === s ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground")}>
-              {s}
+                statusFilter === v ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border text-muted-foreground hover:text-foreground")}>
+              {label}
             </button>
           ))}
         </div>
@@ -623,7 +598,7 @@ function ExposantsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  {["Exposant", "Événement", "Secteur", "Localisation", "CA annuel", "Expérience", "Actions"].map((h) => (
+                  {["Exposant", "Société", "Événement", "Statut", "Arrivée", "Actions"].map((h) => (
                     <TableHead key={h} className={cn(
                       "text-xs font-semibold uppercase tracking-wider text-muted-foreground",
                       h === "Actions" ? "text-right" : "",
@@ -634,43 +609,46 @@ function ExposantsPage() {
               <TableBody>
                 {paginated.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="py-12 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
                       Aucun exposant trouvé
                     </TableCell>
                   </TableRow>
                 ) : (
                   paginated.map((ex) => {
-                    const exp = ex.export_experience ?? "";
+                    const status = ex.registration_status ?? "";
+                    const vip = isVip(ex);
                     return (
                       <TableRow key={ex.id} className="hover:bg-muted/30 cursor-pointer" onClick={() => setViewEx(ex)}>
                         <TableCell className="py-3">
                           <div className="flex items-center gap-3">
-                            <LogoInitials name={ex.company_name ?? `#${ex.id}`} />
+                            <LogoInitials name={ex.company_name ?? fullName(ex)} />
                             <div>
-                              <span className="text-sm font-medium text-foreground">{ex.company_name ?? `Exposant #${ex.id}`}</span>
+                              <span className="text-sm font-medium text-foreground">{fullName(ex)}</span>
+                              {vip && (
+                                <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-amber-500/15 text-amber-700 px-1.5 py-0 text-[10px] font-semibold align-middle">
+                                  <Crown className="h-2.5 w-2.5" /> {VIP_LEVEL_LABELS[vipLevelOf(ex) ?? ""] ?? "VIP"}
+                                </span>
+                              )}
                               {ex.email && <span className="block text-xs text-muted-foreground">{ex.email}</span>}
                             </div>
                           </div>
                         </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{ex.company_name ?? "—"}</TableCell>
                         <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">
-                          {ex.event_id && eventMap[ex.event_id]
-                            ? <span className="text-primary/80 font-medium">{eventMap[ex.event_id]}</span>
+                          {ex.events?.name
+                            ? <span className="text-primary/80 font-medium">{ex.events.name}</span>
                             : <span className="text-muted-foreground/50">—</span>}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{ex.sector ?? "—"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {[ex.city, ex.country].filter(Boolean).join(", ") || "—"}
-                        </TableCell>
-                        <TableCell className="text-sm font-semibold text-foreground tabular-nums">
-                          {formatRevenue(ex.annual_revenue)}
-                        </TableCell>
                         <TableCell>
-                          {exp ? (
+                          {status ? (
                             <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-                              experienceStyles[exp] ?? "bg-muted text-muted-foreground ring-1 ring-inset ring-border")}>
-                              {EXPERIENCE_LABELS[exp] ?? exp}
+                              statusStyles[status] ?? "bg-muted text-muted-foreground ring-1 ring-inset ring-border")}>
+                              {STATUS_LABELS[status] ?? status}
                             </span>
                           ) : <span className="text-sm text-muted-foreground">—</span>}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                          {ex.arrived_at ? fmtDateTime(ex.arrived_at) : "—"}
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
@@ -776,7 +754,7 @@ function ExposantsPage() {
               initial={editEx}
               loading={updateMut.isPending}
               onCancel={() => setEditEx(null)}
-              onSubmit={(data) => updateMut.mutate({ id: editEx.id, data })}
+              onSubmit={(data, vipInfo) => updateMut.mutate({ id: editEx.id, data, vipInfo })}
             />
           )}
           {updateMut.isError && (
@@ -794,8 +772,9 @@ function ExposantsPage() {
           </SheetHeader>
           <ExhibitorForm
             loading={createMut.isPending}
+            activeEventId={eventFilter !== "all" ? Number(eventFilter) : undefined}
             onCancel={() => setShowCreate(false)}
-            onSubmit={(data) => createMut.mutate(data)}
+            onSubmit={(data, vipInfo) => createMut.mutate({ data, vipInfo })}
           />
           {createMut.isError && (
             <p className="text-xs text-destructive mt-2">{(createMut.error as Error).message}</p>
@@ -809,7 +788,7 @@ function ExposantsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cet exposant ?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-semibold text-foreground">"{deleteTarget?.company_name}"</span> sera supprimé définitivement.
+              <span className="font-semibold text-foreground">"{deleteTarget ? fullName(deleteTarget) : ""}"</span> sera supprimé définitivement.
               Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>

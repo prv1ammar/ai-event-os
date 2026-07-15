@@ -1,6 +1,6 @@
 """
 app/routers/badges.py — CRUD for badges via TybotFlow SmartDB
-Table: badges | ID: mf0ehalcglml4tx
+Table: badges | Base: Participants (pmr53k2m2uh2j) | ID: mdea2e70ebbb76e7d
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "badges"
-TABLE_ID = "mf0ehalcglml4tx"
+TABLE_ID = "mdea2e70ebbb76e7d"
 
 router = APIRouter(prefix="/api/v1/badges", tags=["Badges"])
 
@@ -22,7 +21,7 @@ async def list_badges(
     current_user=Depends(get_current_user),
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
-    return await tybot.list(TABLE, params)
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create badge")
@@ -40,7 +39,7 @@ async def get_badge(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(badge_id))
+    record = await tybot.get_by_table(TABLE_ID, str(badge_id))
     if not record:
         raise HTTPException(status_code=404, detail="Badge not found")
     return record

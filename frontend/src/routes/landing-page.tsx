@@ -68,13 +68,14 @@ interface LandingPage {
 interface EventOption {
   id: number; name: string;
   start_date?: string; end_date?: string;
-  city?: string; venue_name?: string; country?: string;
+  venues?: Array<{ id: number; name?: string }>;
 }
 
 interface SessionRecord {
-  title?: string; type?: string;
+  session_title?: string; session_type?: string;
   start_time?: string; end_time?: string;
-  room?: string; event_id?: number;
+  events_id?: number;
+  logistics_zones?: { id: number; name?: string } | null;
 }
 
 const tabs = [
@@ -147,7 +148,7 @@ const EXHIBITOR_DEFAULTS: Partial<typeof PAGE_DEFAULTS> = {
 
 function openFullPreview(page: LandingPage, event?: EventOption, sessions: SessionRecord[] = []) {
   const heroTitle    = page.hero_title    || event?.name    || "Votre événement";
-  const heroSubtitle = page.hero_subtitle || [event?.venue_name, event?.city].filter(Boolean).join(", ") || "";
+  const heroSubtitle = page.hero_subtitle || event?.venues?.[0]?.name || "";
   const ctaText      = page.cta_text      || (page.page_type === "exhibitor" ? "Devenir exposant" : "S'inscrire gratuitement");
   const dateStr      = event?.start_date  ? fmtDate(event.start_date) : "";
   const endDateStr   = event?.end_date    ? ` → ${fmtDate(event.end_date)}` : "";
@@ -164,7 +165,7 @@ function openFullPreview(page: LandingPage, event?: EventOption, sessions: Sessi
   };
 
   // Programme section HTML
-  const eventSessions = sessions.filter(s => !eventId || s.event_id === eventId);
+  const eventSessions = sessions.filter(s => !eventId || s.events_id === eventId);
   const programmeHtml = (page.show_programme && eventSessions.length > 0) ? `
   <section class="programme-section">
     <div class="section-inner">
@@ -175,10 +176,10 @@ function openFullPreview(page: LandingPage, event?: EventOption, sessions: Sessi
           <div class="session-card">
             <div class="session-date">${s.start_time ? fmtDate(s.start_time) : ""}</div>
             <div class="session-time">${fmtTime(s.start_time)}${s.end_time ? ` – ${fmtTime(s.end_time)}` : ""}</div>
-            <div class="session-title">${s.title ?? "Session"}</div>
+            <div class="session-title">${s.session_title ?? "Session"}</div>
             <div class="session-meta">
-              ${s.type ? `<span class="session-type ${s.type}">${s.type}</span>` : ""}
-              ${s.room ? `<span class="session-room">📍 ${s.room}</span>` : ""}
+              ${s.session_type ? `<span class="session-type ${s.session_type}">${s.session_type}</span>` : ""}
+              ${s.logistics_zones?.name ? `<span class="session-room">📍 ${s.logistics_zones.name}</span>` : ""}
             </div>
           </div>`).join("")}
       </div>
@@ -462,7 +463,7 @@ function openFullPreview(page: LandingPage, event?: EventOption, sessions: Sessi
 
 function LivePreview({ page, event }: { page: LandingPage; event?: EventOption }) {
   const heroTitle    = page.hero_title    || event?.name    || "Votre événement";
-  const heroSubtitle = page.hero_subtitle || [event?.venue_name, event?.city].filter(Boolean).join(", ") || "";
+  const heroSubtitle = page.hero_subtitle || event?.venues?.[0]?.name || "";
   const ctaText      = page.cta_text      || (page.page_type === "exhibitor" ? "Devenir exposant" : "S'inscrire gratuitement");
   const dateStr      = event?.start_date  ? fmtDate(event.start_date) : "";
   const eventShort   = event?.name?.split(" ").slice(0, 2).join(" ").toUpperCase() ?? "AI EVENT";

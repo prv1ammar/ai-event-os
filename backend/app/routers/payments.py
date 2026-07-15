@@ -1,6 +1,6 @@
 """
 app/routers/payments.py — CRUD for payments via TybotFlow SmartDB
-Table: payments | ID: mxs0bx0fqiyic9m
+Table: payments | Base: Revenu (pmr53lu2anreo) | ID: md2c11c484ed3c5c7
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "payments"
-TABLE_ID = "mxs0bx0fqiyic9m"
+TABLE_ID = "md2c11c484ed3c5c7"
 
 router = APIRouter(prefix="/api/v1/payments", tags=["Payments"])
 
@@ -23,9 +22,8 @@ async def list_payments(
     current_user=Depends(get_current_user),
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
-    if event_id:
-        params["where"] = f"(event_id,eq,{event_id})"
-    return await tybot.list(TABLE, params)
+    # payments are linked to orders, not events; event filter not supported here
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create payment record")
@@ -43,7 +41,7 @@ async def get_payment(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(payment_id))
+    record = await tybot.get_by_table(TABLE_ID, str(payment_id))
     if not record:
         raise HTTPException(status_code=404, detail="Payment not found")
     return record
