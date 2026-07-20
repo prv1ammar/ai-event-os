@@ -1,6 +1,6 @@
 """
 app/routers/events.py — CRUD for events via TybotFlow SmartDB
-Table: events | ID: m2ub7jp03t6p2tx
+Table: events | Base: Evenements (pmr53j9yjvo1c) | ID: m3ae0796104dae2e3
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -9,8 +9,8 @@ from typing import Optional
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "events"
-TABLE_ID = "m2ub7jp03t6p2tx"
+TABLE_ID = "m3ae0796104dae2e3"
+KEEP_KEYS = {"languages"}  # genuine MultiSelect array column, not a relation
 
 router = APIRouter(prefix="/api/v1/events", tags=["Events"])
 
@@ -26,7 +26,7 @@ async def list_events(
     params = {"limit": limit, "offset": (page - 1) * limit}
     if status:
         params["where"] = f"(status,eq,{status})"
-    return await tybot.list(TABLE, params)
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create event")
@@ -35,7 +35,7 @@ async def create_event(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    return await tybot.create(TABLE_ID, data)
+    return await tybot.create(TABLE_ID, data, keep_keys=KEEP_KEYS)
 
 
 @router.get("/{event_id}", summary="Get event by ID")
@@ -44,7 +44,7 @@ async def get_event(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(event_id))
+    record = await tybot.get_by_table(TABLE_ID, str(event_id))
     if not record:
         raise HTTPException(status_code=404, detail="Event not found")
     return record
@@ -58,7 +58,7 @@ async def update_event(
     current_user=Depends(get_current_user),
 ):
     data["id"] = event_id
-    return await tybot.update(TABLE_ID, data)
+    return await tybot.update(TABLE_ID, data, keep_keys=KEEP_KEYS)
 
 
 @router.delete("/{event_id}", summary="Delete event")

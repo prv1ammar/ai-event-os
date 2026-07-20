@@ -20,20 +20,20 @@ export const Route = createFileRoute("/scanner")({
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ScanResult {
   status: "success" | "error";
+  participant_kind?: string;
   visitor?: {
     id: number;
-    firstname?: string;
-    lastname?: string;
+    first_name?: string;
+    last_name?: string;
     email?: string;
-    company?: string;
-    job_title?: string;
-    country?: string;
-    visitor_type?: string;
+    company_name?: string;
+    phone?: string;
+    registration_status?: string;
   };
   badge?: {
     badge_number?: string;
-    badge_type?: string;
-    status?: string;
+    print_status?: string;
+    pickup_status?: string;
   };
   badge_type?: string;
   badge_number?: string;
@@ -42,24 +42,24 @@ interface ScanResult {
 
 // ─── Type colors ──────────────────────────────────────────────────────────────
 const TYPE_CONFIG: Record<string, { label: string; bg: string; text: string; border: string }> = {
-  vip:      { label: "VIP",         bg: "bg-purple-500/10", text: "text-purple-700", border: "border-purple-300" },
-  press:    { label: "Presse",      bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-300" },
-  presse:   { label: "Presse",      bg: "bg-orange-500/10", text: "text-orange-700", border: "border-orange-300" },
-  exhibitor:{ label: "Exposant",    bg: "bg-emerald-500/10",text: "text-emerald-700",border: "border-emerald-300" },
-  staff:    { label: "Staff",       bg: "bg-red-500/10",    text: "text-red-700",    border: "border-red-300" },
-  standard: { label: "Standard",    bg: "bg-sky-500/10",    text: "text-sky-700",    border: "border-sky-300" },
+  vip:         { label: "VIP",         bg: "bg-purple-500/10", text: "text-purple-700", border: "border-purple-300" },
+  exhibitor:   { label: "Exposant",    bg: "bg-emerald-500/10",text: "text-emerald-700",border: "border-emerald-300" },
+  staff:       { label: "Staff",       bg: "bg-red-500/10",    text: "text-red-700",    border: "border-red-300" },
+  sponsors:    { label: "Sponsor",     bg: "bg-amber-500/10",  text: "text-amber-700",  border: "border-amber-300" },
+  partenaires: { label: "Partenaire",  bg: "bg-indigo-500/10", text: "text-indigo-700", border: "border-indigo-300" },
+  visitor:     { label: "Visiteur",    bg: "bg-sky-500/10",    text: "text-sky-700",    border: "border-sky-300" },
 };
 function getTypeConfig(type?: string) {
-  return TYPE_CONFIG[(type ?? "standard").toLowerCase()] ?? TYPE_CONFIG.standard;
+  return TYPE_CONFIG[(type ?? "visitor").toLowerCase()] ?? TYPE_CONFIG.visitor;
 }
 
 // ─── Result Card ──────────────────────────────────────────────────────────────
 function ResultCard({ result, onReset }: { result: ScanResult; onReset: () => void }) {
   const isOk = result.status === "success";
   const v = result.visitor;
-  const fullName = v ? `${v.firstname ?? ""} ${v.lastname ?? ""}`.trim() || `Visiteur #${v.id}` : "—";
+  const fullName = v ? `${v.first_name ?? ""} ${v.last_name ?? ""}`.trim() || `Participant #${v.id}` : "—";
   const initials = fullName.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
-  const typeConf = getTypeConfig(result.badge_type ?? v?.visitor_type);
+  const typeConf = getTypeConfig(result.participant_kind ?? result.badge_type);
 
   return (
     <div className={cn(
@@ -90,8 +90,8 @@ function ResultCard({ result, onReset }: { result: ScanResult; onReset: () => vo
             </div>
             <div>
               <p className="font-bold text-foreground text-base">{fullName}</p>
-              {v.company && <p className="text-sm text-muted-foreground">{v.company}</p>}
-              {v.job_title && <p className="text-xs text-muted-foreground">{v.job_title}</p>}
+              {v.company_name && <p className="text-sm text-muted-foreground">{v.company_name}</p>}
+              {v.registration_status && <p className="text-xs text-muted-foreground capitalize">{v.registration_status}</p>}
             </div>
           </div>
 
@@ -121,12 +121,12 @@ function ResultCard({ result, onReset }: { result: ScanResult; onReset: () => vo
                 <p className="text-sm text-foreground truncate">{v.email}</p>
               </div>
             )}
-            {v.country && (
+            {v.phone && (
               <div className="rounded-xl border border-border p-3">
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                  <Globe className="h-3.5 w-3.5" /> Pays
+                  <Globe className="h-3.5 w-3.5" /> Téléphone
                 </div>
-                <p className="text-sm text-foreground">{v.country}</p>
+                <p className="text-sm text-foreground">{v.phone}</p>
               </div>
             )}
           </div>

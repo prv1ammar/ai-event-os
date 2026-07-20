@@ -23,16 +23,23 @@ export const Route = createFileRoute("/badges")({
 });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-interface Visitor {
+interface Badge {
   id: number;
-  visitor_type?: string;
-  badges_id?: number | null;
-  event_id?: number | null;
+  qr_code?: string;
+  badge_number?: string;
+  print_status?: string;   // not_printed | printed | reprinted
+  pickup_status?: string;  // pending | picked_up | lost
+  visiteurs_id?: number | null;
+  exposants_id?: number | null;
+  vip_id?: number | null;
+  staff_id?: number | null;
+  sponsors_id?: number | null;
+  partenaires_id?: number | null;
   [key: string]: unknown;
 }
 
 interface BadgeTypeConfig {
-  key: string;
+  key: string;           // matches the FK column on the badges table
   label: string;
   labelFr: string;
   icon: React.ElementType;
@@ -44,10 +51,10 @@ interface BadgeTypeConfig {
   active: boolean;
 }
 
-// ─── Default badge types ──────────────────────────────────────────────────────
+// ─── Badge categories (one per participant table) ─────────────────────────────
 const DEFAULT_TYPES: BadgeTypeConfig[] = [
   {
-    key: "standard",
+    key: "visiteurs_id",
     label: "VISITEUR",
     labelFr: "Visiteur",
     icon: Users,
@@ -59,7 +66,7 @@ const DEFAULT_TYPES: BadgeTypeConfig[] = [
     active: true,
   },
   {
-    key: "vip",
+    key: "vip_id",
     label: "VIP",
     labelFr: "VIP",
     icon: Crown,
@@ -71,19 +78,7 @@ const DEFAULT_TYPES: BadgeTypeConfig[] = [
     active: true,
   },
   {
-    key: "press",
-    label: "PRESSE",
-    labelFr: "Presse",
-    icon: Newspaper,
-    headerBg: "bg-orange-500",
-    accentText: "text-orange-600",
-    accentBg: "bg-orange-500/10",
-    accessZones: ["Hall principal", "Conférences publiques", "Zone presse", "Backstage speakers"],
-    description: "Accès presse avec droit de photo/vidéo et zone backstage speakers.",
-    active: true,
-  },
-  {
-    key: "exhibitor",
+    key: "exposants_id",
     label: "EXPOSANT",
     labelFr: "Exposant",
     icon: Building2,
@@ -95,9 +90,33 @@ const DEFAULT_TYPES: BadgeTypeConfig[] = [
     active: true,
   },
   {
-    key: "staff",
-    label: "ORGANISATEUR",
-    labelFr: "Organisateur",
+    key: "sponsors_id",
+    label: "SPONSOR",
+    labelFr: "Sponsor",
+    icon: Newspaper,
+    headerBg: "bg-amber-500",
+    accentText: "text-amber-600",
+    accentBg: "bg-amber-500/10",
+    accessZones: ["Hall principal", "Zone exposants", "Lounge VIP", "Espace sponsors"],
+    description: "Accès sponsor avec visibilité renforcée et espaces partenaires.",
+    active: true,
+  },
+  {
+    key: "partenaires_id",
+    label: "PARTENAIRE",
+    labelFr: "Partenaire",
+    icon: Building2,
+    headerBg: "bg-indigo-600",
+    accentText: "text-indigo-600",
+    accentBg: "bg-indigo-500/10",
+    accessZones: ["Hall principal", "Zone exposants", "Espace partenaires", "Réunions B2B"],
+    description: "Accès partenaire officiel : grands espaces et privilèges dédiés.",
+    active: true,
+  },
+  {
+    key: "staff_id",
+    label: "STAFF",
+    labelFr: "Staff",
     icon: ShieldCheck,
     headerBg: "bg-red-600",
     accentText: "text-red-600",
@@ -109,9 +128,8 @@ const DEFAULT_TYPES: BadgeTypeConfig[] = [
 ];
 
 // ─── Fetchers ─────────────────────────────────────────────────────────────────
-async function fetchVisitors(eventId: string | null): Promise<Visitor[]> {
-  const url = eventId ? `/api/v1/visitors?limit=500&event_id=${eventId}` : `/api/v1/visitors?limit=500`;
-  const raw = await apiRequest<Visitor[] | { list: Visitor[] }>(url);
+async function fetchBadges(): Promise<Badge[]> {
+  const raw = await apiRequest<Badge[] | { list: Badge[] }>("/api/v1/badges?limit=500");
   return Array.isArray(raw) ? raw : (raw.list ?? []);
 }
 
@@ -241,7 +259,7 @@ function TypeCard({ type, count, printed, onEdit }: {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-lg bg-muted/40 px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Inscrits</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Badges</p>
             <p className="text-xl font-bold text-foreground tabular-nums">{count}</p>
           </div>
           <div className="rounded-lg bg-muted/40 px-3 py-2">
@@ -290,36 +308,24 @@ function TypeCard({ type, count, printed, onEdit }: {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 function BadgesPage() {
-  const { activeEvent } = useEvent();
-  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [editType, setEditType] = useState<BadgeTypeConfig | null>(null);
 
-  const { data: visitors = [], isLoading } = useQuery({
-    queryKey: ["visitors", eventId],
-    queryFn: () => fetchVisitors(eventId),
+  const { data: badges = [], isLoading } = useQuery({
+    queryKey: ["badges"],
+    queryFn: fetchBadges,
     staleTime: 60_000,
   });
 
-  // Count visitors per badge type
-  const countByType = (key: string) => {
-    if (visitors.length === 0) return 0;
-    return visitors.filter((v) => {
-      const t = (v.visitor_type ?? "standard").toLowerCase();
-      if (key === "press") return ["press", "presse"].includes(t);
-      return t === key;
-    }).length;
-  };
+  // Count badges per participant category (FK column set on the badge)
+  const countByType = (key: string) =>
+    badges.filter((b) => b[key] != null).length;
 
-  const printedByType = (key: string) => {
-    return visitors.filter((v) => {
-      const t = (v.visitor_type ?? "standard").toLowerCase();
-      const match = key === "press" ? ["press", "presse"].includes(t) : t === key;
-      return match && v.badges_id != null;
-    }).length;
-  };
+  const printedByType = (key: string) =>
+    badges.filter((b) => b[key] != null && ["printed", "reprinted"].includes(b.print_status ?? "")).length;
 
-  const totalVisitors = visitors.length;
-  const totalWithBadge = visitors.filter((v) => v.badges_id != null).length;
+  const totalBadges = badges.length;
+  const totalPrinted = badges.filter((b) => ["printed", "reprinted"].includes(b.print_status ?? "")).length;
+  const totalPickedUp = badges.filter((b) => b.pickup_status === "picked_up").length;
 
   return (
     <div className="p-6 md:p-8 space-y-8">
@@ -349,9 +355,9 @@ function BadgesPage() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           { label: "Types actifs", value: DEFAULT_TYPES.filter((t) => t.active).length, color: "bg-primary/10 text-primary" },
-          { label: "Total inscrits", value: isLoading ? "…" : totalVisitors, color: "bg-sky-500/10 text-sky-600" },
-          { label: "Badges générés", value: isLoading ? "…" : totalWithBadge, color: "bg-emerald-500/10 text-emerald-600" },
-          { label: "En attente", value: isLoading ? "…" : totalVisitors - totalWithBadge, color: "bg-amber-500/10 text-amber-600" },
+          { label: "Badges générés", value: isLoading ? "…" : totalBadges, color: "bg-sky-500/10 text-sky-600" },
+          { label: "Imprimés", value: isLoading ? "…" : totalPrinted, color: "bg-emerald-500/10 text-emerald-600" },
+          { label: "Retirés sur site", value: isLoading ? "…" : totalPickedUp, color: "bg-amber-500/10 text-amber-600" },
         ].map((s) => (
           <div key={s.label} className="rounded-xl border border-border bg-card p-4">
             <div className={cn("inline-flex h-8 w-8 items-center justify-center rounded-lg mb-3 text-sm font-bold", s.color)}>

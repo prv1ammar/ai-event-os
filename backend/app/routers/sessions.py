@@ -1,6 +1,6 @@
 """
 app/routers/sessions.py — CRUD for sessions via TybotFlow SmartDB
-Table: sessions | ID: m740fzv9wk8idqh
+Table: sessions | Base: Evenements (pmr53j9yjvo1c) | ID: mabd59f3b36f4df83
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "sessions"
-TABLE_ID = "m740fzv9wk8idqh"
+TABLE_ID = "mabd59f3b36f4df83"
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["Sessions"])
 
@@ -24,8 +23,8 @@ async def list_sessions(
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
     if event_id:
-        params["where"] = f"(event_id,eq,{event_id})"
-    return await tybot.list(TABLE, params)
+        params["where"] = f"(events_id,eq,{event_id})"
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create session")
@@ -43,7 +42,7 @@ async def get_session(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(session_id))
+    record = await tybot.get_by_table(TABLE_ID, str(session_id))
     if not record:
         raise HTTPException(status_code=404, detail="Session not found")
     return record

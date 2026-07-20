@@ -43,21 +43,17 @@ export const Route = createFileRoute("/evenements")({
 interface Event {
   id: number;
   name: string;
-  slug?: string;
   description?: string;
-  type?: string;
+  event_type?: string;
   start_date?: string;
   end_date?: string;
-  country?: string;
-  city?: string;
-  venue_name?: string;
+  languages?: string[];
+  logo_url?: string;
+  cover_image_url?: string;
   status?: string;
-  visibility?: string;
-  expected_visitors?: number;
-  expected_exhibitors?: number;
-  budget?: string | number;
-  language?: string;
-  organization_id?: number;
+  is_free?: boolean;
+  venues_id?: number | null;
+  venue?: { id: number; name?: string } | null;
   [key: string]: unknown;
 }
 
@@ -83,12 +79,22 @@ async function fetchOrganizations(): Promise<Organization[]> {
   }
 }
 
-async function createEvent(data: Partial<Event>): Promise<void> {
-  await smartDbRequest("events", "POST", data as Record<string, unknown>);
+interface VenueOption { id: number; name: string }
+
+async function fetchVenues(): Promise<VenueOption[]> {
+  const raw = await apiRequest<VenueOption[] | { list: VenueOption[] }>("/api/v1/venues?limit=100");
+  const rows = Array.isArray(raw) ? raw : (raw.list ?? []);
+  return rows.map((v) => ({ id: Number(v.id), name: String(v.name ?? `Lieu #${v.id}`) }));
 }
 
-async function updateEvent({ id, data }: { id: number; data: Partial<Event> }): Promise<void> {
-  await smartDbRequest("events", "PATCH", { id, ...data });
+async function createEvent({ data, venueId }: { data: Partial<Event>; venueId?: number | null }): Promise<void> {
+  await smartDbRequest("events", "POST", { ...data, venues_id: venueId ?? null } as Record<string, unknown>);
+}
+
+async function updateEvent({ id, data, venueId }: {
+  id: number; data: Partial<Event>; venueId?: number | null;
+}): Promise<void> {
+  await smartDbRequest("events", "PATCH", { id, ...data, venues_id: venueId ?? null });
 }
 
 async function deleteEvent(id: number): Promise<void> {
@@ -96,12 +102,12 @@ async function deleteEvent(id: number): Promise<void> {
 }
 
 const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon", published: "Publié", live: "En cours", closed: "Clôturé",
+  draft: "Brouillon", published: "Publié", ongoing: "En cours", closed: "Clôturé", archived: "Archivé",
 };
 const TYPE_LABELS: Record<string, string> = {
-  conference: "Conférence", trade_fair: "Foire commerciale", summit: "Sommet",
-  exhibition: "Exposition", forum: "Forum", workshop: "Atelier",
+  conference: "Conférence", salon: "Salon", forum: "Forum", hybrid: "Hybride",
 };
+const LANGUAGE_OPTIONS = ["fr", "en", "ar", "es", "de", "pt"];
 
 function formatDate(iso?: string): string {
   if (!iso) return "—";
@@ -112,24 +118,15 @@ function getEventDate(e: Event): string {
   return `${formatDate(e.start_date)}${e.end_date ? ` — ${formatDate(e.end_date)}` : ""}`;
 }
 function getEventLocation(e: Event): string {
-  return [e.venue_name, e.city, e.country].filter(Boolean).join(", ") || "—";
-}
-function getBudget(e: Event): string {
-  if (!e.budget) return "—";
-  const n = Number(e.budget);
-  if (!isNaN(n) && n > 0) {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)} MDH`;
-    if (n >= 1_000) return `${Math.round(n / 1_000)}K MAD`;
-    return `${n} MAD`;
-  }
-  return String(e.budget);
+  return e.venue?.name || "—";
 }
 
 const statusStyles: Record<string, string> = {
-  live: "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/20",
+  ongoing: "bg-emerald-500/10 text-emerald-600 ring-1 ring-inset ring-emerald-500/20",
   published: "bg-sky-500/10 text-sky-600 ring-1 ring-inset ring-sky-500/20",
   draft: "bg-amber-500/10 text-amber-600 ring-1 ring-inset ring-amber-500/20",
   closed: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
+  archived: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 const toneStyles: Record<string, string> = {
   primary: "bg-primary/10 text-primary", blue: "bg-sky-500/10 text-sky-600",
@@ -149,80 +146,150 @@ function Thumbnail({ name }: { name: string }) {
 // ─── Event Form (create + edit) ───────────────────────────────────────────────
 interface EventFormProps {
   initial?: Partial<Event>;
-  onSubmit: (data: Partial<Event>) => void;
+  onSubmit: (data: Partial<Event>, venueId?: number | null) => void;
   onCancel: () => void;
   loading: boolean;
 }
 
-function slugify(name: string): string {
-  return name.toLowerCase().trim()
-    .replace(/[àâä]/g, "a").replace(/[éèêë]/g, "e").replace(/[îï]/g, "i")
-    .replace(/[ôö]/g, "o").replace(/[ùûü]/g, "u").replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-}
-
 function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps) {
+  const qc = useQueryClient();
   const [form, setForm] = useState<Partial<Event>>({
-    name: "", slug: "", type: "conference", status: "draft", language: "fr",
-    visibility: "public",
-    start_date: "", end_date: "", venue_name: "", city: "", country: "",
-    expected_visitors: undefined, expected_exhibitors: undefined, budget: "",
+    name: "", event_type: "conference", status: "draft", languages: ["fr"],
+    start_date: "", end_date: "", is_free: false,
     description: "",
     ...initial,
   });
+  const [venueId, setVenueId] = useState<number | undefined>(initial.venue?.id ?? undefined);
+  const [showNewVenue, setShowNewVenue] = useState(false);
+  const [newVenue, setNewVenue] = useState({ name: "", city: "", address: "", total_capacity: "", total_surface_sqm: "" });
 
-  const [slugManual, setSlugManual] = useState(!!initial.slug);
+  const { data: venues = [], isLoading: venuesLoading } = useQuery({
+    queryKey: ["venue-options"],
+    queryFn: fetchVenues,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const createVenueMut = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, unknown> = { name: newVenue.name };
+      if (newVenue.city) payload.city = newVenue.city;
+      if (newVenue.address) payload.address = newVenue.address;
+      if (newVenue.total_capacity) payload.total_capacity = newVenue.total_capacity;
+      if (newVenue.total_surface_sqm) payload.total_surface_sqm = newVenue.total_surface_sqm;
+      return smartDbRequest("venues", "POST", payload) as Promise<{ id: number; name: string }>;
+    },
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: ["venue-options"] });
+      setVenueId(created.id);
+      setShowNewVenue(false);
+      setNewVenue({ name: "", city: "", address: "", total_capacity: "", total_surface_sqm: "" });
+    },
+  });
 
   function set(key: keyof Event, value: unknown) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function handleNameChange(name: string) {
-    set("name", name);
-    if (!slugManual) set("slug", slugify(name));
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload = { ...form };
+    delete payload.venue;
+    delete payload.venues_id;
     if (!payload.start_date) delete payload.start_date;
     if (!payload.end_date) delete payload.end_date;
-    if (!payload.slug) delete payload.slug;
     if (!payload.description) delete payload.description;
-    onSubmit(payload);
+    onSubmit(payload, venueId ?? null);
   }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4 py-2">
-      {/* Name + slug */}
+      {/* Name */}
       <div className="grid gap-1.5">
         <Label htmlFor="name">Nom de l'événement *</Label>
         <Input id="name" value={form.name ?? ""} required placeholder="Ex: SIAM 2027"
-          onChange={(e) => handleNameChange(e.target.value)} />
+          onChange={(e) => set("name", e.target.value)} />
       </div>
 
+      {/* Lieu */}
       <div className="grid gap-1.5">
-        <Label htmlFor="slug">
-          Slug
-          <span className="ml-2 text-[10px] text-muted-foreground font-normal">(URL, généré automatiquement)</span>
-        </Label>
-        <Input id="slug" value={form.slug ?? ""} placeholder="ex: siam-2027"
-          onChange={(e) => { setSlugManual(true); set("slug", e.target.value); }} />
+        <div className="flex items-center justify-between">
+          <Label>Lieu</Label>
+          <button type="button" className="text-xs font-medium text-primary hover:underline"
+            onClick={() => setShowNewVenue((v) => !v)}>
+            {showNewVenue ? "Annuler" : "+ Nouveau lieu"}
+          </button>
+        </div>
+        <Select
+          value={venueId != null ? String(venueId) : "none"}
+          onValueChange={(v) => setVenueId(v === "none" ? undefined : Number(v))}
+        >
+          <SelectTrigger><SelectValue placeholder={venuesLoading ? "Chargement…" : "Sélectionner un lieu"} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">Aucun lieu</SelectItem>
+            {venues.map((v) => (
+              <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {showNewVenue && (
+          <div className="grid gap-3 rounded-lg border border-border p-3 mt-1"
+            onKeyDown={(e) => { if (e.key === "Enter") e.preventDefault(); }}>
+            <div className="grid gap-1.5">
+              <Label htmlFor="nv-name" className="text-xs">Nom du lieu *</Label>
+              <Input id="nv-name" className="h-8 text-sm" placeholder="Ex: Palais des Congrès"
+                value={newVenue.name} onChange={(e) => setNewVenue((v) => ({ ...v, name: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-city" className="text-xs">Ville</Label>
+                <Input id="nv-city" className="h-8 text-sm" value={newVenue.city}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, city: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-address" className="text-xs">Adresse</Label>
+                <Input id="nv-address" className="h-8 text-sm" value={newVenue.address}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, address: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-capacity" className="text-xs">Capacité</Label>
+                <Input id="nv-capacity" type="number" min="0" className="h-8 text-sm" value={newVenue.total_capacity}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, total_capacity: e.target.value }))} />
+              </div>
+              <div className="grid gap-1.5">
+                <Label htmlFor="nv-surface" className="text-xs">Surface (m²)</Label>
+                <Input id="nv-surface" type="number" min="0" step="0.01" className="h-8 text-sm" value={newVenue.total_surface_sqm}
+                  onChange={(e) => setNewVenue((v) => ({ ...v, total_surface_sqm: e.target.value }))} />
+              </div>
+            </div>
+            {createVenueMut.isError && (
+              <p className="text-xs text-destructive">{(createVenueMut.error as Error).message}</p>
+            )}
+            <div className="flex justify-end">
+              <Button type="button" size="sm" className="h-8 text-xs bg-gradient-primary text-primary-foreground"
+                disabled={!newVenue.name || createVenueMut.isPending}
+                onClick={() => createVenueMut.mutate()}>
+                {createVenueMut.isPending && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                Créer le lieu
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Type + Status */}
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label>Type</Label>
-          <Select value={form.type ?? "conference"} onValueChange={(v) => set("type", v)}>
+          <Select value={form.event_type ?? "conference"} onValueChange={(v) => set("event_type", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="conference">Conférence</SelectItem>
-              <SelectItem value="trade_fair">Foire commerciale</SelectItem>
-              <SelectItem value="summit">Sommet</SelectItem>
-              <SelectItem value="exhibition">Exposition</SelectItem>
+              <SelectItem value="salon">Salon</SelectItem>
               <SelectItem value="forum">Forum</SelectItem>
-              <SelectItem value="workshop">Atelier</SelectItem>
+              <SelectItem value="hybrid">Hybride</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -233,8 +300,9 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
             <SelectContent>
               <SelectItem value="draft">Brouillon</SelectItem>
               <SelectItem value="published">Publié</SelectItem>
-              <SelectItem value="live">En cours</SelectItem>
+              <SelectItem value="ongoing">En cours</SelectItem>
               <SelectItem value="closed">Clôturé</SelectItem>
+              <SelectItem value="archived">Archivé</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -254,80 +322,45 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
         </div>
       </div>
 
-      {/* Location */}
-      <div className="grid gap-1.5">
-        <Label htmlFor="venue_name">Lieu / Salle</Label>
-        <Input id="venue_name" value={form.venue_name ?? ""} placeholder="Ex: Foire Internationale de Casablanca"
-          onChange={(e) => set("venue_name", e.target.value)} />
-      </div>
+      {/* Languages + Free */}
       <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="city">Ville</Label>
-          <Input id="city" value={form.city ?? ""} placeholder="Casablanca"
-            onChange={(e) => set("city", e.target.value)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="country">Pays</Label>
-          <Input id="country" value={form.country ?? ""} placeholder="Morocco"
-            onChange={(e) => set("country", e.target.value)} />
-        </div>
-      </div>
-
-      {/* Visibility + Language */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="grid gap-1.5">
-          <Label>Visibilité</Label>
-          <Select value={form.visibility ?? "public"} onValueChange={(v) => set("visibility", v)}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="public">Public</SelectItem>
-              <SelectItem value="private">Privé</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
         <div className="grid gap-1.5">
           <Label>Langue(s)</Label>
-          <div className="flex gap-2">
-            {[{ v: "fr", label: "FR" }, { v: "ar", label: "AR" }, { v: "en", label: "EN" }].map(({ v, label }) => {
-              const langs = (form.language ?? "").split(",").filter(Boolean);
+          <div className="flex flex-wrap gap-2">
+            {LANGUAGE_OPTIONS.map((v) => {
+              const langs = form.languages ?? [];
               const active = langs.includes(v);
               return (
                 <button key={v} type="button"
                   onClick={() => {
                     const next = active ? langs.filter((l) => l !== v) : [...langs, v];
-                    set("language", next.join(","));
+                    set("languages", next);
                   }}
                   className={cn(
-                    "flex-1 rounded-md border py-2 text-sm font-medium transition-colors",
+                    "rounded-md border px-2.5 py-1.5 text-sm font-medium uppercase transition-colors",
                     active
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-border bg-card text-muted-foreground hover:border-primary/40",
                   )}
                 >
-                  {label}
+                  {v}
                 </button>
               );
             })}
           </div>
         </div>
-      </div>
-
-      {/* Numbers + Budget */}
-      <div className="grid grid-cols-3 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="exp_vis">Visiteurs attendus</Label>
-          <Input id="exp_vis" type="number" value={form.expected_visitors ?? ""}
-            onChange={(e) => set("expected_visitors", e.target.value ? Number(e.target.value) : undefined)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="exp_exp">Exposants attendus</Label>
-          <Input id="exp_exp" type="number" value={form.expected_exhibitors ?? ""}
-            onChange={(e) => set("expected_exhibitors", e.target.value ? Number(e.target.value) : undefined)} />
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="budget">Budget</Label>
-          <Input id="budget" type="text" placeholder="ex: 250000 MAD" value={String(form.budget ?? "")}
-            onChange={(e) => set("budget", e.target.value)} />
+          <Label>Accès</Label>
+          <button type="button" onClick={() => set("is_free", !form.is_free)}
+            className={cn(
+              "rounded-md border py-2 text-sm font-medium transition-colors",
+              form.is_free
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border bg-card text-muted-foreground hover:border-primary/40",
+            )}
+          >
+            {form.is_free ? "Gratuit" : "Payant"}
+          </button>
         </div>
       </div>
 
@@ -360,7 +393,7 @@ function EventDetail({ event }: { event: Event }) {
         <Thumbnail name={event.name} />
         <div>
           <p className="font-semibold text-foreground">{event.name}</p>
-          <p className="text-xs text-muted-foreground capitalize">{TYPE_LABELS[event.type ?? ""] ?? event.type ?? "—"}</p>
+          <p className="text-xs text-muted-foreground capitalize">{TYPE_LABELS[event.event_type ?? ""] ?? event.event_type ?? "—"}</p>
         </div>
         <span className={cn("ml-auto inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", statusStyles[status] ?? "bg-muted text-muted-foreground")}>
           {STATUS_LABELS[status] ?? status}
@@ -371,28 +404,13 @@ function EventDetail({ event }: { event: Event }) {
         {[
           { label: "Date début", value: formatDate(event.start_date) },
           { label: "Date fin", value: formatDate(event.end_date) },
-          { label: "Lieu", value: event.venue_name ?? "—" },
-          { label: "Ville", value: event.city ?? "—" },
-          { label: "Pays", value: event.country ?? "—" },
-          { label: "Langue(s)", value: event.language ? event.language.split(",").map(l => l.toUpperCase()).join(" · ") : "—" },
-          { label: "Visibilité", value: event.visibility ?? "—" },
+          { label: "Lieu", value: getEventLocation(event) },
+          { label: "Accès", value: event.is_free ? "Gratuit" : "Payant" },
+          { label: "Langue(s)", value: event.languages?.length ? event.languages.map(l => l.toUpperCase()).join(" · ") : "—" },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg bg-muted/40 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
             <p className="font-medium text-foreground mt-0.5 truncate">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-3 gap-3 text-sm">
-        {[
-          { label: "Visiteurs attendus", value: event.expected_visitors?.toLocaleString("fr-FR") ?? "—" },
-          { label: "Exposants attendus", value: event.expected_exhibitors?.toLocaleString("fr-FR") ?? "—" },
-          { label: "Budget", value: getBudget(event) },
-        ].map(({ label, value }) => (
-          <div key={label} className="rounded-lg bg-muted/40 px-3 py-2">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
-            <p className="font-semibold text-foreground mt-0.5">{value}</p>
           </div>
         ))}
       </div>
@@ -426,12 +444,20 @@ function EvenementsPage() {
 
   const createMut = useMutation({
     mutationFn: createEvent,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["events"] }); setShowCreate(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["events"] });
+      qc.invalidateQueries({ queryKey: ["venue-options"] });
+      setShowCreate(false);
+    },
   });
 
   const updateMut = useMutation({
     mutationFn: updateEvent,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["events"] }); setEditEvent(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["events"] });
+      qc.invalidateQueries({ queryKey: ["venue-options"] });
+      setEditEvent(null);
+    },
   });
 
   const deleteMut = useMutation({
@@ -450,29 +476,18 @@ function EvenementsPage() {
   });
 
   const statusCounts = {
-    enCours: events.filter((e) => e.status === "live").length,
+    enCours: events.filter((e) => e.status === "ongoing").length,
     aVenir: events.filter((e) => ["published", "draft"].includes(e.status ?? "")).length,
-    termines: events.filter((e) => e.status === "closed").length,
+    termines: events.filter((e) => ["closed", "archived"].includes(e.status ?? "")).length,
+    gratuits: events.filter((e) => e.is_free).length,
   };
-
-  const totalBudgetMAD = events.reduce((sum, e) => {
-    const n = Number(e.budget);
-    return isNaN(n) ? sum : sum + n;
-  }, 0);
-
-  function fmtTotalCA(n: number): string {
-    if (n === 0) return "—";
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M MAD`;
-    if (n >= 1_000) return `${Math.round(n / 1_000)}K MAD`;
-    return `${n} MAD`;
-  }
 
   const stats = [
     { label: "Total événements", value: isLoading ? "…" : String(totalRows), icon: Users, tone: "primary" },
     { label: "À venir", value: isLoading ? "…" : String(statusCounts.aVenir), icon: CalendarClock, tone: "blue" },
     { label: "En cours", value: isLoading ? "…" : String(statusCounts.enCours), icon: PlayCircle, tone: "green" },
     { label: "Terminés", value: isLoading ? "…" : String(statusCounts.termines), icon: CheckCircle2, tone: "gray" },
-    { label: "CA total généré", value: isLoading ? "…" : fmtTotalCA(totalBudgetMAD), icon: TrendingUp, tone: "amber" },
+    { label: "Gratuits", value: isLoading ? "…" : String(statusCounts.gratuits), icon: TrendingUp, tone: "amber" },
   ];
 
   return (
@@ -519,10 +534,11 @@ function EvenementsPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Tous les statuts</SelectItem>
-            <SelectItem value="live">En cours</SelectItem>
+            <SelectItem value="ongoing">En cours</SelectItem>
             <SelectItem value="published">Publié</SelectItem>
             <SelectItem value="draft">Brouillon</SelectItem>
             <SelectItem value="closed">Clôturé</SelectItem>
+            <SelectItem value="archived">Archivé</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="outline" className="h-10 bg-card" onClick={() => { setSearch(""); setStatusFilter("all"); setPage(1); }}>
@@ -547,10 +563,10 @@ function EvenementsPage() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  {["Événement", "Date", "Lieu", "Statut", "Exposants", "Visiteurs", "CA généré", "Actions"].map((h) => (
+                  {["Événement", "Date", "Lieu", "Type", "Statut", "Actions"].map((h) => (
                     <TableHead key={h} className={cn(
                       "text-xs font-semibold uppercase tracking-wider text-muted-foreground",
-                      ["Exposants", "Visiteurs", "CA généré", "Actions"].includes(h) ? "text-right" : "",
+                      h === "Actions" ? "text-right" : "",
                     )}>{h}</TableHead>
                   ))}
                 </TableRow>
@@ -558,7 +574,7 @@ function EvenementsPage() {
               <TableBody>
                 {filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-12 text-muted-foreground text-sm">
+                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground text-sm">
                       Aucun événement trouvé
                     </TableCell>
                   </TableRow>
@@ -571,31 +587,18 @@ function EvenementsPage() {
                         <TableCell className="py-3">
                           <div className="flex items-center gap-3">
                             <Thumbnail name={ev.name} />
-                            <div>
-                              <span className="text-sm font-medium text-foreground">{ev.name}</span>
-                              {ev.type && (
-                                <span className="block text-xs text-muted-foreground capitalize">
-                                  {TYPE_LABELS[ev.type] ?? ev.type.replace("_", " ")}
-                                </span>
-                              )}
-                            </div>
+                            <span className="text-sm font-medium text-foreground">{ev.name}</span>
                           </div>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{getEventDate(ev)}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">{getEventLocation(ev)}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground capitalize">
+                          {TYPE_LABELS[ev.event_type ?? ""] ?? ev.event_type ?? "—"}
+                        </TableCell>
                         <TableCell>
                           <span className={cn("inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium", statusClass)}>
                             {STATUS_LABELS[status] ?? status}
                           </span>
-                        </TableCell>
-                        <TableCell className="text-sm font-medium text-foreground text-right tabular-nums">
-                          {ev.expected_exhibitors?.toLocaleString() ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-sm font-medium text-foreground text-right tabular-nums">
-                          {ev.expected_visitors?.toLocaleString() ?? "—"}
-                        </TableCell>
-                        <TableCell className="text-sm font-semibold text-foreground text-right tabular-nums">
-                          {getBudget(ev)}
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
@@ -705,7 +708,7 @@ function EvenementsPage() {
               initial={editEvent}
               loading={updateMut.isPending}
               onCancel={() => setEditEvent(null)}
-              onSubmit={(data) => updateMut.mutate({ id: editEvent.id, data })}
+              onSubmit={(data, venueId) => updateMut.mutate({ id: editEvent.id, data, venueId })}
             />
           )}
           {updateMut.isError && (
@@ -724,7 +727,7 @@ function EvenementsPage() {
           <EventForm
             loading={createMut.isPending}
             onCancel={() => setShowCreate(false)}
-            onSubmit={(data) => createMut.mutate(data)}
+            onSubmit={(data, venueId) => createMut.mutate({ data, venueId })}
           />
           {createMut.isError && (
             <p className="text-xs text-destructive mt-2">{(createMut.error as Error).message}</p>

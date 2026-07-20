@@ -1,6 +1,9 @@
 """
 app/routers/leads.py — CRUD for leads via TybotFlow SmartDB
-Table: leads | ID: mi2q9y1gl4fiq52
+Table: contacts | Base: CRM (pmr53jrrzjqwe) | ID: m78f17b1f5fcb640d
+
+A "lead" is a CRM contact: identity + source + lead_status,
+optionally linked to a company (companies_id) and an event (events_id).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "leads"
-TABLE_ID = "mi2q9y1gl4fiq52"
+TABLE_ID = "m78f17b1f5fcb640d"
 
 router = APIRouter(prefix="/api/v1/leads", tags=["Leads"])
 
@@ -22,12 +24,10 @@ async def list_leads(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    rows = await tybot.list(TABLE, {"limit": 500})
-    if event_id is not None:
-        # Show leads assigned to this event OR unassigned (event_id null = global leads)
-        rows = [r for r in rows if r.get("event_id") in (event_id, None)]
-    start = (page - 1) * limit
-    return rows[start : start + limit]
+    params = {"limit": limit, "offset": (page - 1) * limit}
+    if event_id:
+        params["where"] = f"(events_id,eq,{event_id})"
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create lead")
@@ -45,7 +45,7 @@ async def get_lead(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(lead_id))
+    record = await tybot.get_by_table(TABLE_ID, str(lead_id))
     if not record:
         raise HTTPException(status_code=404, detail="Lead not found")
     return record

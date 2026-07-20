@@ -1,8 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect } from "react";
 import {
-  Users, Building2, Target, CalendarDays, DollarSign,
-  TrendingUp, ArrowRight, Layers, Flame, Thermometer, Snowflake,
+  Users, Building2, CalendarDays, DollarSign, Target,
+  TrendingUp, ArrowRight, Layers, CheckCircle2, Clock3, XCircle, ChevronDown,
+  type LucideIcon,
 } from "lucide-react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -12,8 +14,14 @@ import { cn } from "@/lib/utils";
 import { PageShell, Surface } from "@/components/PageShell";
 import { KpiCard, type KpiTone } from "@/components/KpiCard";
 import { apiRequest } from "@/lib/api";
-import { useEvent } from "@/lib/event-context";
+import { useEvent, type ActiveEvent } from "@/lib/event-context";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from "@/components/ui/command";
 
 export const Route = createFileRoute("/")({
   component: Dashboard,
@@ -23,25 +31,28 @@ export const Route = createFileRoute("/")({
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface DashboardData {
-  event: {
+  events: Array<{
     id: number; name?: string; start_date?: string; end_date?: string;
-    city?: string; country?: string; venue_name?: string; status?: string;
-    budget?: number; expected_visitors?: number; expected_exhibitors?: number;
-    type?: string; language?: string;
-  };
+    event_type?: string; status?: string; is_free?: boolean;
+    venue?: { id: number; name?: string } | null;
+  }>;
   kpis: {
-    visitors_total: number; expected_visitors: number;
-    exhibitors_total: number; expected_exhibitors: number;
-    leads_total: number; hot_leads: number; warm_leads: number; cold_leads: number;
-    sessions_total: number; avg_lead_score: number; budget: number;
-    visitors_by_type: Record<string, number>;
-    leads_by_interest: Record<string, number>;
+    visitors_total: number; visitors_confirmed: number; visitors_arrived: number;
+    exhibitors_total: number; exhibitors_confirmed: number;
+    sessions_total: number;
+    orders_total: number; orders_paid: number;
+    leads_total: number;
+    revenue_paid: number; revenue_pending: number;
+    visitors_by_status: Record<string, number>;
+    exhibitors_by_status: Record<string, number>;
     sessions_by_type: Record<string, number>;
     sessions_by_status: Record<string, number>;
+    orders_by_status: Record<string, number>;
+    orders_by_type: Record<string, number>;
   };
-  top_exhibitors: Array<{
-    id: number; company_name?: string; annual_revenue?: number;
-    sector?: string; country?: string;
+  top_orders: Array<{
+    id: number; order_number?: string; total: number;
+    status?: string; order_type?: string;
   }>;
   visitors_chart: Array<{ date: string; count: number }>;
 }
@@ -50,10 +61,10 @@ interface DashboardData {
 
 function fmt(n: number): string { return n.toLocaleString("fr-FR"); }
 
-function fmtRevenue(val: number): string {
+function fmtMAD(val: number): string {
   if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(1)} MDH`;
   if (val >= 1_000) return `${Math.round(val / 1_000)}K MAD`;
-  return `${val} MAD`;
+  return `${Math.round(val)} MAD`;
 }
 
 function fmtDate(iso?: string): string {
@@ -65,11 +76,14 @@ function fmtShortDate(iso: string): string {
   return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "short" });
 }
 
-const INTEREST_LABELS: Record<string, string> = { hot: "Chaud", warm: "Tiède", cold: "Froid" };
-const INTEREST_COLORS: Record<string, string> = {
-  hot: "oklch(0.55 0.22 22)",
-  warm: "oklch(0.78 0.16 75)",
-  cold: "oklch(0.55 0.24 240)",
+const REG_STATUS_LABELS: Record<string, string> = {
+  confirmed: "Confirmé", pending: "En attente", cancelled: "Annulé", no_show: "Absent",
+};
+const REG_STATUS_COLORS: Record<string, string> = {
+  confirmed: "oklch(0.55 0.18 145)",
+  pending: "oklch(0.78 0.16 75)",
+  cancelled: "oklch(0.6 0.05 270)",
+  no_show: "oklch(0.55 0.22 22)",
 };
 const SESSION_TYPE_COLORS: Record<string, string> = {
   keynote: "oklch(0.55 0.24 280)",
@@ -77,6 +91,13 @@ const SESSION_TYPE_COLORS: Record<string, string> = {
   panel: "oklch(0.78 0.16 75)",
   networking: "oklch(0.55 0.18 145)",
   conference: "oklch(0.6 0.05 270)",
+};
+const ORDER_TYPE_LABELS: Record<string, string> = {
+  billet: "Billet", stand: "Stand", sponsoring: "Sponsoring", package: "Package",
+};
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon", pending: "En attente", paid: "Payée", partial: "Partielle",
+  cancelled: "Annulée", refunded: "Remboursée",
 };
 
 // ── Skeleton ───────────────────────────────────────────────────────────────────
@@ -109,81 +130,157 @@ function ProgressBar({ value, max, color = "bg-gradient-primary" }: { value: num
   );
 }
 
+// ── Event multi-select ──────────────────────────────────────────────────────────
+
+function EventMultiSelect({ events, selected, onChange }: {
+  events: ActiveEvent[]; selected: string[]; onChange: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
+  }
+
+  const label =
+    selected.length === 0 ? "Sélectionner des événements"
+    : selected.length === events.length ? "Tous les événements"
+    : selected.length === 1 ? (events.find((e) => e.id === selected[0])?.shortName ?? "1 événement")
+    : `${selected.length} événements`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" size="sm" className="h-9 min-w-[200px] justify-between gap-2 text-xs">
+          <span className="truncate">{label}</span>
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-[300px] p-0">
+        <Command>
+          <CommandInput placeholder="Rechercher un événement…" className="text-xs" />
+          <CommandList>
+            <CommandEmpty>Aucun événement trouvé.</CommandEmpty>
+            <CommandGroup>
+              {events.map((e) => {
+                const checked = selected.includes(e.id);
+                return (
+                  <CommandItem
+                    key={e.id}
+                    value={e.name}
+                    onSelect={() => toggle(e.id)}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Checkbox checked={checked} onCheckedChange={() => toggle(e.id)} />
+                    <span className="flex-1 truncate text-xs">{e.name}</span>
+                  </CommandItem>
+                );
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 
 function Dashboard() {
-  const { activeEvent } = useEvent();
-  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
+  const { activeEvent, allEvents } = useEvent();
+  const [selectedEventIds, setSelectedEventIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (selectedEventIds.length === 0 && activeEvent.id !== "0") {
+      setSelectedEventIds([activeEvent.id]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEvent.id]);
+
+  const sortedIds = selectedEventIds.slice().sort();
+  const eventSelector = <EventMultiSelect events={allEvents} selected={selectedEventIds} onChange={setSelectedEventIds} />;
 
   const { data, isLoading, isError } = useQuery<DashboardData>({
-    queryKey: ["dashboard", eventId],
-    queryFn: () => apiRequest<DashboardData>(`/api/v1/analytics/dashboard/${eventId}`),
-    enabled: !!eventId,
+    queryKey: ["dashboard", sortedIds.join(",")],
+    queryFn: () => apiRequest<DashboardData>(`/api/v1/analytics/dashboard?event_ids=${sortedIds.join(",")}`),
+    enabled: sortedIds.length > 0,
     staleTime: 60_000,
     retry: false,
   });
 
-  if (!eventId) return (
-    <PageShell eyebrow="Tableau de bord" title="Tableau de bord">
+  if (sortedIds.length === 0) return (
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}>
       <div className="flex flex-col items-center justify-center h-96 gap-3 text-center">
         <CalendarDays className="h-12 w-12 text-muted-foreground/30" />
-        <p className="text-sm font-medium text-foreground">Sélectionnez un événement</p>
-        <p className="text-xs text-muted-foreground">Utilisez le menu « Événement actif » en haut pour choisir un événement.</p>
+        <p className="text-sm font-medium text-foreground">Sélectionnez un ou plusieurs événements</p>
+        <p className="text-xs text-muted-foreground">Utilisez le sélecteur ci-dessus pour choisir un ou plusieurs événements à afficher.</p>
       </div>
     </PageShell>
   );
 
   if (isLoading) return (
-    <PageShell eyebrow="Tableau de bord" title={activeEvent.name}><DashSkeleton /></PageShell>
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}><DashSkeleton /></PageShell>
   );
 
   if (isError || !data) return (
-    <PageShell eyebrow="Tableau de bord" title={activeEvent.name}>
+    <PageShell eyebrow="Tableau de bord" title="Tableau de bord" actions={eventSelector}>
       <div className="flex items-center justify-center h-64 text-sm text-muted-foreground">
         Impossible de charger les données TybotFlow.
       </div>
     </PageShell>
   );
 
-  const { kpis, top_exhibitors, visitors_chart, event } = data;
+  const { kpis, top_orders, visitors_chart, events } = data;
+  const isMulti = events.length > 1;
+  const dashboardTitle = isMulti ? `${events.length} événements sélectionnés` : (events[0]?.name ?? activeEvent.name);
+  const dashboardDescription = isMulti
+    ? events.map((e) => e.name).join(" · ")
+    : [
+        fmtDate(events[0]?.start_date) !== "—" ? `${fmtDate(events[0]?.start_date)} — ${fmtDate(events[0]?.end_date)}` : null,
+        events[0]?.venue?.name ?? null,
+      ].filter(Boolean).join(" · ");
 
   // ── KPI cards ────────────────────────────────────────────────────────────────
-  const kpiCards: Array<{ label: string; value: string; sub: string; icon: React.ElementType; tone: KpiTone }> = [
+  const kpiCards: Array<{ label: string; value: string; sub: string; icon: LucideIcon; tone: KpiTone }> = [
     {
       label: "Visiteurs inscrits",
       value: fmt(kpis.visitors_total),
-      sub: kpis.expected_visitors > 0 ? `/${fmt(kpis.expected_visitors)} attendus` : "total plateforme",
+      sub: `${fmt(kpis.visitors_confirmed)} confirmés`,
       icon: Users, tone: "primary",
     },
     {
       label: "Exposants",
       value: fmt(kpis.exhibitors_total),
-      sub: kpis.expected_exhibitors > 0 ? `/${fmt(kpis.expected_exhibitors)} attendus` : "total plateforme",
+      sub: `${fmt(kpis.exhibitors_confirmed)} confirmés`,
       icon: Building2, tone: "blue",
     },
     {
       label: "Leads générés",
       value: fmt(kpis.leads_total),
-      sub: `${fmt(kpis.hot_leads)} chauds`,
+      sub: "contacts CRM",
       icon: Target, tone: "green",
     },
     {
       label: "Sessions",
       value: fmt(kpis.sessions_total),
-      sub: `pour cet événement`,
+      sub: "au programme",
       icon: CalendarDays, tone: "amber",
     },
     {
-      label: "Budget",
-      value: kpis.budget ? fmtRevenue(kpis.budget) : "—",
-      sub: "budget alloué",
+      label: "Revenu encaissé",
+      value: kpis.revenue_paid > 0 ? fmtMAD(kpis.revenue_paid) : "—",
+      sub: kpis.revenue_pending > 0 ? `${fmtMAD(kpis.revenue_pending)} en attente` : "commandes payées",
       icon: DollarSign, tone: "rose",
     },
   ];
 
-  // ── Leads pie ────────────────────────────────────────────────────────────────
-  const leadsData = (["hot", "warm", "cold"] as const)
-    .map((k) => ({ name: INTEREST_LABELS[k], value: kpis.leads_by_interest[k] ?? 0, color: INTEREST_COLORS[k] }))
+  // ── Registrations pie ────────────────────────────────────────────────────────
+  const regData = Object.entries(kpis.visitors_by_status)
+    .map(([k, v]) => ({
+      key: k,
+      name: REG_STATUS_LABELS[k] ?? k,
+      value: v,
+      color: REG_STATUS_COLORS[k] ?? "oklch(0.6 0.05 270)",
+    }))
     .filter((d) => d.value > 0);
 
   // ── Sessions bar ─────────────────────────────────────────────────────────────
@@ -193,20 +290,18 @@ function Dashboard() {
     fill: SESSION_TYPE_COLORS[type] ?? "oklch(0.6 0.05 270)",
   }));
 
-  const maxRevenue = Math.max(...top_exhibitors.map((e) => e.annual_revenue ?? 0), 1);
+  const maxOrder = Math.max(...top_orders.map((o) => o.total), 1);
 
   return (
     <PageShell
       eyebrow="Tableau de bord"
-      title={event.name ?? activeEvent.name}
-      description={[
-        fmtDate(event.start_date) !== "—" ? `${fmtDate(event.start_date)} — ${fmtDate(event.end_date)}` : null,
-        [event.venue_name, event.city, event.country].filter(Boolean).join(", ") || null,
-      ].filter(Boolean).join(" · ")}
+      title={dashboardTitle}
+      description={dashboardDescription}
+      actions={eventSelector}
     >
       {/* KPI row */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
-        {kpiCards.map((k) => <KpiCard key={k.label} {...k} delta={null} />)}
+        {kpiCards.map((k) => <KpiCard key={k.label} {...k} />)}
       </div>
 
       {/* Charts row */}
@@ -220,7 +315,7 @@ function Dashboard() {
               <p className="text-xs text-muted-foreground mt-0.5">
                 {visitors_chart.length > 0
                   ? `${fmt(kpis.visitors_total)} inscrits · données par date`
-                  : `${fmt(kpis.visitors_total)} visiteurs inscrits sur la plateforme`}
+                  : `${fmt(kpis.visitors_total)} visiteurs inscrits sur cet événement`}
               </p>
             </div>
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -254,63 +349,58 @@ function Dashboard() {
               </ResponsiveContainer>
             )}
           </div>
-          {/* Expected vs actual */}
-          {kpis.expected_visitors > 0 && (
+          {/* Arrivals vs registrations */}
+          {kpis.visitors_total > 0 && (
             <div className="mt-3 space-y-1">
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Objectif visiteurs</span>
+                <span>Arrivés sur site</span>
                 <span className="font-medium text-foreground">
-                  {fmt(kpis.visitors_total)} / {fmt(kpis.expected_visitors)}
+                  {fmt(kpis.visitors_arrived)} / {fmt(kpis.visitors_total)}
                 </span>
               </div>
-              <ProgressBar value={kpis.visitors_total} max={kpis.expected_visitors} />
+              <ProgressBar value={kpis.visitors_arrived} max={kpis.visitors_total} />
             </div>
           )}
         </Surface>
 
-        {/* Leads pipeline pie */}
+        {/* Registrations pie */}
         <Surface className="lg:col-span-2 p-6">
-          <h2 className="font-display text-base font-semibold">Pipeline leads</h2>
+          <h2 className="font-display text-base font-semibold">Statut des inscriptions</h2>
           <p className="text-xs text-muted-foreground mt-0.5 mb-4">
-            Niveau d'intérêt · Score moy. <span className="font-medium text-foreground">{kpis.avg_lead_score}/100</span>
+            Visiteurs par statut d'inscription
           </p>
-          {leadsData.length === 0 ? (
+          {regData.length === 0 ? (
             <div className="flex items-center justify-center h-44 text-sm text-muted-foreground">
-              Aucun lead enregistré
+              Aucun visiteur inscrit
             </div>
           ) : (
             <div className="flex items-center gap-4">
               <div className="relative h-44 w-44 shrink-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={leadsData} innerRadius={52} outerRadius={78} paddingAngle={3} dataKey="value" stroke="none">
-                      {leadsData.map((e) => <Cell key={e.name} fill={e.color} />)}
+                    <Pie data={regData} innerRadius={52} outerRadius={78} paddingAngle={3} dataKey="value" stroke="none">
+                      {regData.map((e) => <Cell key={e.key} fill={e.color} />)}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                  <p className="font-display text-2xl font-bold tabular-nums">{fmt(kpis.leads_total)}</p>
-                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Leads</p>
+                  <p className="font-display text-2xl font-bold tabular-nums">{fmt(kpis.visitors_total)}</p>
+                  <p className="text-[11px] uppercase tracking-wider text-muted-foreground">Inscrits</p>
                 </div>
               </div>
               <div className="flex-1 space-y-3 min-w-0">
-                {[
-                  { key: "hot", label: "Chaud", icon: Flame, value: kpis.hot_leads },
-                  { key: "warm", label: "Tiède", icon: Thermometer, value: kpis.warm_leads },
-                  { key: "cold", label: "Froid", icon: Snowflake, value: kpis.cold_leads },
-                ].map(({ key, label, icon: Icon, value }) => (
+                {regData.map(({ key, name, value, color }) => (
                   <div key={key} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5">
-                        <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: INTEREST_COLORS[key] }} />
-                        <Icon className="h-3 w-3" style={{ color: INTEREST_COLORS[key] }} />
-                        <span className="text-foreground">{label}</span>
+                        <span className="h-2.5 w-2.5 rounded-sm shrink-0" style={{ background: color }} />
+                        <span className="text-foreground">{name}</span>
                       </div>
                       <span className="text-muted-foreground tabular-nums">
-                        {fmt(value)} <span className="opacity-60">({kpis.leads_total > 0 ? ((value / kpis.leads_total) * 100).toFixed(0) : 0}%)</span>
+                        {fmt(value)} <span className="opacity-60">({kpis.visitors_total > 0 ? ((value / kpis.visitors_total) * 100).toFixed(0) : 0}%)</span>
                       </span>
                     </div>
-                    <ProgressBar value={value} max={kpis.leads_total} color={key === "hot" ? "bg-rose-500" : key === "warm" ? "bg-amber-400" : "bg-blue-500"} />
+                    <ProgressBar value={value} max={kpis.visitors_total} />
                   </div>
                 ))}
               </div>
@@ -322,39 +412,41 @@ function Dashboard() {
       {/* Bottom row */}
       <div className="grid gap-4 lg:grid-cols-3">
 
-        {/* Top exhibitors */}
+        {/* Top orders */}
         <Surface className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-base font-semibold">Top exposants</h2>
-            <span className="text-[11px] text-muted-foreground">par CA annuel</span>
+            <h2 className="font-display text-base font-semibold">Top commandes</h2>
+            <span className="text-[11px] text-muted-foreground">par montant</span>
           </div>
-          {top_exhibitors.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Aucun exposant</p>
+          {top_orders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucune commande</p>
           ) : (
             <div className="space-y-3.5">
-              {top_exhibitors.map((e, i) => (
-                <div key={e.id}>
+              {top_orders.map((o, i) => (
+                <div key={o.id}>
                   <div className="flex items-center justify-between text-xs mb-1.5">
                     <span className="font-medium flex items-center gap-2">
                       <span className="inline-flex h-5 w-5 items-center justify-center rounded-md bg-muted text-[10px] font-bold text-muted-foreground">{i + 1}</span>
-                      <span className="truncate max-w-[120px]">{e.company_name ?? `#${e.id}`}</span>
+                      <span className="truncate max-w-[110px]">{o.order_number ?? `#${o.id}`}</span>
+                      {o.order_type && (
+                        <span className="text-[10px] text-muted-foreground">{ORDER_TYPE_LABELS[o.order_type] ?? o.order_type}</span>
+                      )}
                     </span>
-                    <span className="text-muted-foreground tabular-nums">
-                      {e.annual_revenue ? fmtRevenue(e.annual_revenue) : "—"}
-                    </span>
+                    <span className="text-muted-foreground tabular-nums">{fmtMAD(o.total)}</span>
                   </div>
-                  <ProgressBar value={e.annual_revenue ?? 0} max={maxRevenue} />
+                  <ProgressBar value={o.total} max={maxOrder} />
                 </div>
               ))}
             </div>
           )}
-          {kpis.expected_exhibitors > 0 && (
-            <div className="mt-4 pt-3 border-t border-border/50 space-y-1">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Objectif exposants</span>
-                <span className="font-medium text-foreground">{fmt(kpis.exhibitors_total)} / {fmt(kpis.expected_exhibitors)}</span>
-              </div>
-              <ProgressBar value={kpis.exhibitors_total} max={kpis.expected_exhibitors} />
+          {kpis.orders_total > 0 && (
+            <div className="mt-4 pt-3 border-t border-border/50 space-y-1.5">
+              {Object.entries(kpis.orders_by_status).map(([status, count]) => (
+                <div key={status} className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{ORDER_STATUS_LABELS[status] ?? status}</span>
+                  <span className="font-medium tabular-nums">{fmt(count)}</span>
+                </div>
+              ))}
             </div>
           )}
         </Surface>
@@ -402,9 +494,10 @@ function Dashboard() {
             {[
               { icon: Users, label: "Visiteurs", value: fmt(kpis.visitors_total), color: "bg-primary/10 text-primary" },
               { icon: Building2, label: "Exposants", value: fmt(kpis.exhibitors_total), color: "bg-info/10 text-info" },
-              { icon: Flame, label: "Leads chauds", value: fmt(kpis.hot_leads), color: "bg-rose-500/10 text-rose-500" },
-              { icon: CalendarDays, label: "Sessions", value: fmt(kpis.sessions_total), color: "bg-warning/10 text-warning" },
-              { icon: Layers, label: "Score moy. leads", value: `${kpis.avg_lead_score}/100`, color: "bg-accent text-accent-foreground" },
+              { icon: CheckCircle2, label: "Confirmés", value: fmt(kpis.visitors_confirmed), color: "bg-emerald-500/10 text-emerald-600" },
+              { icon: Clock3, label: "En attente", value: fmt(kpis.visitors_by_status["pending"] ?? 0), color: "bg-warning/10 text-warning" },
+              { icon: XCircle, label: "Annulés", value: fmt(kpis.visitors_by_status["cancelled"] ?? 0), color: "bg-muted text-muted-foreground" },
+              { icon: Layers, label: "Revenu encaissé", value: kpis.revenue_paid > 0 ? fmtMAD(kpis.revenue_paid) : "—", color: "bg-accent text-accent-foreground" },
             ].map(({ icon: Icon, label, value, color }) => (
               <li key={label} className="flex items-center gap-3 rounded-lg p-2 -mx-2 hover:bg-muted/40 transition-colors">
                 <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", color)}>

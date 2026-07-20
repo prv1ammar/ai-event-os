@@ -36,40 +36,53 @@ export const Route = createFileRoute("/programme")({
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
+interface RelatedRef { id: number; name?: string; full_name?: string }
+
 interface Session {
   id?: number;
-  title: string;
+  session_title: string;
   description?: string;
-  type?: string;
-  room?: string;
-  capacity?: number;
+  session_type?: string;
   start_time?: string;
   end_time?: string;
-  event_id?: number;
-  status?: string;
+  access_type?: string;
   language?: string;
+  status?: string;
+  events_id?: number;
+  logistics_zones_id?: number;
+  events?: RelatedRef;
+  logistics_zones?: RelatedRef;
+  session_speakers?: RelatedRef[];
   [key: string]: unknown;
 }
 
-type SessionType = "keynote" | "panel" | "workshop" | "roundtable" | "networking" | "demo";
+type SessionType = "keynote" | "workshop" | "panel" | "conference" | "networking";
 
 const TYPE_STYLES: Record<string, string> = {
   keynote:    "bg-primary/10 text-primary ring-primary/20",
-  panel:      "bg-sky-500/10 text-sky-600 ring-sky-500/20",
   workshop:   "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20",
-  roundtable: "bg-amber-500/10 text-amber-600 ring-amber-500/20",
+  panel:      "bg-sky-500/10 text-sky-600 ring-sky-500/20",
+  conference: "bg-amber-500/10 text-amber-600 ring-amber-500/20",
   networking: "bg-violet-500/10 text-violet-600 ring-violet-500/20",
-  demo:       "bg-rose-500/10 text-rose-600 ring-rose-500/20",
 };
 
 const TYPE_LABELS: Record<string, string> = {
   keynote:    "Keynote",
-  panel:      "Panel",
   workshop:   "Workshop",
-  roundtable: "Table ronde",
+  panel:      "Panel",
+  conference: "Conférence",
   networking: "Networking",
-  demo:       "Démo",
 };
+
+const ACCESS_LABELS: Record<string, string> = {
+  free: "Gratuit", registration_required: "Inscription requise", paid: "Payant",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  scheduled: "Planifiée", ongoing: "En cours", completed: "Terminée", cancelled: "Annulée",
+};
+
+const LANGUAGE_OPTIONS = ["fr", "en", "ar"];
 
 const ALL_TYPES = Object.keys(TYPE_LABELS) as SessionType[];
 
@@ -169,16 +182,15 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
   });
 
   const [form, setForm] = useState<Partial<Session>>({
-    title: "",
-    type: "keynote",
-    room: "",
-    capacity: undefined,
+    session_title: "",
+    session_type: "keynote",
+    access_type: "free",
     start_time: "",
     end_time: "",
     description: "",
     status: "scheduled",
-    language: "FR",
-    event_id: activeEventId,
+    language: "fr",
+    events_id: activeEventId,
     ...initial,
   });
 
@@ -189,9 +201,10 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload = { ...form };
+    delete payload.events;
+    delete payload.logistics_zones;
+    delete payload.session_speakers;
     if (!payload.description) delete payload.description;
-    if (!payload.room) delete payload.room;
-    if (!payload.capacity) delete payload.capacity;
     onSubmit(payload);
   }
 
@@ -202,8 +215,8 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
         <Label>Événement *</Label>
         <Select
           required
-          value={form.event_id != null ? String(form.event_id) : ""}
-          onValueChange={(v) => set("event_id", Number(v))}
+          value={form.events_id != null ? String(form.events_id) : ""}
+          onValueChange={(v) => set("events_id", Number(v))}
         >
           <SelectTrigger>
             <SelectValue placeholder={eventsLoading ? "Chargement…" : "Sélectionner un événement"} />
@@ -217,15 +230,15 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
       </div>
 
       <div className="grid gap-1.5">
-        <Label htmlFor="title">Titre *</Label>
-        <Input id="title" required value={form.title ?? ""} placeholder="Ex: Keynote d'ouverture"
-          onChange={(e) => set("title", e.target.value)} />
+        <Label htmlFor="session_title">Titre *</Label>
+        <Input id="session_title" required value={form.session_title ?? ""} placeholder="Ex: Keynote d'ouverture"
+          onChange={(e) => set("session_title", e.target.value)} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
           <Label>Type</Label>
-          <Select value={form.type ?? "keynote"} onValueChange={(v) => set("type", v)}>
+          <Select value={form.session_type ?? "keynote"} onValueChange={(v) => set("session_type", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               {ALL_TYPES.map((t) => (
@@ -235,9 +248,15 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
           </Select>
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="room">Salle</Label>
-          <Input id="room" value={form.room ?? ""} placeholder="Ex: Auditorium A"
-            onChange={(e) => set("room", e.target.value)} />
+          <Label>Accès</Label>
+          <Select value={form.access_type ?? "free"} onValueChange={(v) => set("access_type", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {Object.entries(ACCESS_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -258,47 +277,26 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
 
       <div className="grid grid-cols-2 gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="capacity">Capacité</Label>
-          <Input id="capacity" type="number" min={1} value={form.capacity ?? ""}
-            placeholder="Ex: 200"
-            onChange={(e) => set("capacity", e.target.value ? Number(e.target.value) : undefined)} />
-        </div>
-        <div className="grid gap-1.5">
           <Label>Statut</Label>
           <Select value={form.status ?? "scheduled"} onValueChange={(v) => set("status", v)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="scheduled">Planifiée</SelectItem>
-              <SelectItem value="confirmed">Confirmée</SelectItem>
-              <SelectItem value="cancelled">Annulée</SelectItem>
+              {Object.entries(STATUS_LABELS).map(([v, label]) => (
+                <SelectItem key={v} value={v}>{label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
-      </div>
-
-      <div className="grid gap-1.5">
-        <Label>Langue(s)</Label>
-        <div className="flex gap-2">
-          {[{ v: "FR", label: "FR" }, { v: "AR", label: "AR" }, { v: "EN", label: "EN" }].map(({ v, label }) => {
-            const langs = (form.language ?? "").split("/").filter(Boolean);
-            const active = langs.includes(v);
-            return (
-              <button key={v} type="button"
-                onClick={() => {
-                  const next = active ? langs.filter((l) => l !== v) : [...langs, v];
-                  set("language", next.join("/"));
-                }}
-                className={cn(
-                  "flex-1 rounded-md border py-2 text-sm font-medium transition-colors",
-                  active
-                    ? "border-primary bg-primary/10 text-primary"
-                    : "border-border bg-card text-muted-foreground hover:border-primary/40",
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
+        <div className="grid gap-1.5">
+          <Label>Langue</Label>
+          <Select value={form.language ?? "fr"} onValueChange={(v) => set("language", v)}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LANGUAGE_OPTIONS.map((v) => (
+                <SelectItem key={v} value={v}>{v.toUpperCase()}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -309,6 +307,10 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
           onChange={(e) => set("description", e.target.value)}
           className="resize-none" />
       </div>
+
+      <p className="text-xs text-muted-foreground -mt-2">
+        La salle/zone et les intervenants se gèrent séparément (Plan du salon / Speakers).
+      </p>
 
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
         <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>Annuler</Button>
@@ -324,7 +326,8 @@ function SessionForm({ initial = {}, onSubmit, onCancel, loading, activeEventId 
 // ── Session Detail ─────────────────────────────────────────────────────────────
 
 function SessionDetail({ session, eventName }: { session: Session; eventName?: string }) {
-  const typeKey = session.type ?? "";
+  const typeKey = session.session_type ?? "";
+  const speakerNames = session.session_speakers?.map((sp) => sp.full_name).filter(Boolean).join(", ");
   return (
     <div className="space-y-4 py-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -335,20 +338,20 @@ function SessionDetail({ session, eventName }: { session: Session; eventName?: s
           {TYPE_LABELS[typeKey] ?? typeKey}
         </span>
         {session.status && (
-          <span className="text-xs text-muted-foreground capitalize">{session.status}</span>
+          <span className="text-xs text-muted-foreground">{STATUS_LABELS[session.status] ?? session.status}</span>
         )}
       </div>
 
-      <p className="font-semibold text-foreground text-base leading-snug">{session.title}</p>
+      <p className="font-semibold text-foreground text-base leading-snug">{session.session_title}</p>
 
       <div className="grid grid-cols-2 gap-3 text-sm">
         {[
-          { label: "Événement", value: eventName ?? "—" },
+          { label: "Événement", value: eventName ?? session.events?.name ?? "—" },
           { label: "Début", value: session.start_time ? `${fmtDate(session.start_time)} ${fmtTime(session.start_time)}` : "—" },
           { label: "Durée", value: fmtDuration(session.start_time, session.end_time) || "—" },
-          { label: "Salle", value: session.room ?? "—" },
-          { label: "Capacité", value: session.capacity ? session.capacity.toLocaleString("fr-FR") : "—" },
-          { label: "Langue", value: session.language ?? "—" },
+          { label: "Salle / Zone", value: session.logistics_zones?.name ?? "—" },
+          { label: "Accès", value: ACCESS_LABELS[session.access_type ?? ""] ?? session.access_type ?? "—" },
+          { label: "Langue", value: session.language ? session.language.toUpperCase() : "—" },
         ].map(({ label, value }) => (
           <div key={label} className="rounded-lg bg-muted/40 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</p>
@@ -356,6 +359,13 @@ function SessionDetail({ session, eventName }: { session: Session; eventName?: s
           </div>
         ))}
       </div>
+
+      {speakerNames && (
+        <div className="rounded-lg bg-muted/40 px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Intervenant(s)</p>
+          <p className="text-sm text-foreground">{speakerNames}</p>
+        </div>
+      )}
 
       {session.description && (
         <div className="rounded-lg bg-muted/40 px-3 py-2">
@@ -397,7 +407,7 @@ function Programme() {
   const eventMap = Object.fromEntries(eventOptions.map((e) => [e.id, e.name]));
 
   const sessions = eventId
-    ? allSessions.filter((s) => Number(s.event_id) === eventId)
+    ? allSessions.filter((s) => Number(s.events_id) === eventId)
     : allSessions;
 
   const createMut = useMutation({
@@ -422,12 +432,12 @@ function Programme() {
 
   const filtered = sessions.filter((s) => {
     if (effectiveDay && fmtDateKey(s.start_time) !== effectiveDay) return false;
-    if (activeTypes.length > 0 && !activeTypes.includes(s.type ?? "")) return false;
+    if (activeTypes.length > 0 && !activeTypes.includes(s.session_type ?? "")) return false;
     if (search) {
       const q = search.toLowerCase();
       return (
-        s.title?.toLowerCase().includes(q) ||
-        s.room?.toLowerCase().includes(q) ||
+        s.session_title?.toLowerCase().includes(q) ||
+        s.logistics_zones?.name?.toLowerCase().includes(q) ||
         s.description?.toLowerCase().includes(q)
       );
     }
@@ -565,8 +575,8 @@ function Programme() {
             ) : (
               <ul className="divide-y divide-border/60">
                 {sortedFiltered.map((s, i) => {
-                  const typeKey = s.type ?? "";
-                  const pct = s.capacity ? Math.min(100, Math.round((0 / s.capacity) * 100)) : null;
+                  const typeKey = s.session_type ?? "";
+                  const speakerNames = s.session_speakers?.map((sp) => sp.full_name).filter(Boolean).join(", ");
                   return (
                     <li
                       key={s.id ?? i}
@@ -586,7 +596,7 @@ function Programme() {
                       {/* Info */}
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-medium text-foreground">{s.title}</p>
+                          <p className="font-medium text-foreground">{s.session_title}</p>
                           <span className={cn(
                             "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset",
                             TYPE_STYLES[typeKey] ?? "bg-muted text-muted-foreground ring-border",
@@ -595,39 +605,29 @@ function Programme() {
                           </span>
                         </div>
                         <p className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          {s.event_id && eventMap[s.event_id] && (
-                            <span className="font-medium text-primary/80">{eventMap[s.event_id]}</span>
+                          {(s.events?.name || (s.events_id && eventMap[s.events_id])) && (
+                            <span className="font-medium text-primary/80">{s.events?.name ?? eventMap[s.events_id!]}</span>
                           )}
-                          {s.room && (
+                          {s.logistics_zones?.name && (
                             <span className="inline-flex items-center gap-1">
-                              <MapPin className="h-3 w-3" /> {s.room}
+                              <MapPin className="h-3 w-3" /> {s.logistics_zones.name}
                             </span>
                           )}
                           {s.language && (
                             <span className="inline-flex items-center gap-1">
-                              <Mic2 className="h-3 w-3" /> {s.language}
+                              <Mic2 className="h-3 w-3" /> {s.language.toUpperCase()}
+                            </span>
+                          )}
+                          {speakerNames && (
+                            <span className="inline-flex items-center gap-1">
+                              <Users className="h-3 w-3" /> {speakerNames}
                             </span>
                           )}
                         </p>
                       </div>
 
-                      {/* Capacity + actions */}
+                      {/* Actions */}
                       <div className="flex items-center gap-3">
-                        {s.capacity != null && (
-                          <div className="min-w-[120px]">
-                            <div className="flex items-center justify-between text-[11px] mb-1">
-                              <span className="inline-flex items-center gap-1 text-muted-foreground">
-                                <Users className="h-3 w-3" /> {s.capacity.toLocaleString("fr-FR")} places
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                              <div
-                                className="h-full rounded-full bg-gradient-primary"
-                                style={{ width: `${pct ?? 0}%` }}
-                              />
-                            </div>
-                          </div>
-                        )}
                         <div className="flex items-center gap-1 shrink-0">
                           <button
                             className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -670,7 +670,7 @@ function Programme() {
           </SheetHeader>
           {viewSession && (
             <>
-              <SessionDetail session={viewSession} eventName={viewSession.event_id ? eventMap[viewSession.event_id] : undefined} />
+              <SessionDetail session={viewSession} eventName={viewSession.events?.name ?? (viewSession.events_id ? eventMap[viewSession.events_id] : undefined)} />
               <div className="flex gap-2 mt-6 pt-4 border-t border-border">
                 <Button variant="outline" className="flex-1" onClick={() => setViewSession(null)}>
                   <X className="h-4 w-4 mr-2" /> Fermer
@@ -734,7 +734,7 @@ function Programme() {
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer cette session ?</AlertDialogTitle>
             <AlertDialogDescription>
-              <span className="font-semibold text-foreground">"{deleteTarget?.title}"</span> sera supprimée définitivement.
+              <span className="font-semibold text-foreground">"{deleteTarget?.session_title}"</span> sera supprimée définitivement.
               Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>

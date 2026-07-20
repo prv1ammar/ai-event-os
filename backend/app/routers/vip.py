@@ -1,8 +1,10 @@
 """
-app/routers/exhibitors.py — CRUD for exhibitors via TybotFlow SmartDB
-Table: exposants | Base: Participants (pmr53k2m2uh2j) | ID: m0b2dd0eb02083bf3
+app/routers/vip.py — CRUD for VIP guests via TybotFlow SmartDB
+Table: vip | Base: Participants (pmr53k2m2uh2j) | ID: m216af58aa010ca2f
 
-Exhibitors have no events_id column of their own — an exhibitor links to an
+A VIP record represents a visitor or exhibitor promoted to VIP status
+(vip_level: standard | premium | diamant), linked back via visiteurs_id
+or exposants_id. It has no events_id column of its own — VIP links to an
 event only indirectly via contacts_id -> contacts.events_id (contacts is the
 "leads" table, Base: CRM, ID m78f17b1f5fcb640d). Filtering by event_id below
 does that join in Python since TybotFlow's `where` errors ("column events_id
@@ -14,14 +16,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE_ID = "m0b2dd0eb02083bf3"
+TABLE_ID = "m216af58aa010ca2f"
 CONTACTS_TABLE_ID = "m78f17b1f5fcb640d"
 
-router = APIRouter(prefix="/api/v1/exhibitors", tags=["Exhibitors"])
+router = APIRouter(prefix="/api/v1/vip", tags=["VIP"])
 
 
-@router.get("", summary="List exhibitors")
-async def list_exhibitors(
+@router.get("", summary="List VIP guests")
+async def list_vip(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=500),
     event_id: int = Query(None),
@@ -49,8 +51,8 @@ async def list_exhibitors(
     return await tybot.list_by_table(TABLE_ID, params)
 
 
-@router.post("", status_code=201, summary="Create exhibitor")
-async def create_exhibitor(
+@router.post("", status_code=201, summary="Create VIP record")
+async def create_vip(
     data: dict,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
@@ -58,34 +60,34 @@ async def create_exhibitor(
     return await tybot.create(TABLE_ID, data)
 
 
-@router.get("/{exhibitor_id}", summary="Get exhibitor by ID")
-async def get_exhibitor(
-    exhibitor_id: int,
+@router.get("/{vip_id}", summary="Get VIP record by ID")
+async def get_vip(
+    vip_id: int,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get_by_table(TABLE_ID, str(exhibitor_id))
+    record = await tybot.get_by_table(TABLE_ID, str(vip_id))
     if not record:
-        raise HTTPException(status_code=404, detail="Exhibitor not found")
+        raise HTTPException(status_code=404, detail="VIP record not found")
     return record
 
 
-@router.patch("/{exhibitor_id}", summary="Update exhibitor")
-async def update_exhibitor(
-    exhibitor_id: int,
+@router.patch("/{vip_id}", summary="Update VIP record")
+async def update_vip(
+    vip_id: int,
     data: dict,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    data["id"] = exhibitor_id
+    data["id"] = vip_id
     return await tybot.update(TABLE_ID, data)
 
 
-@router.delete("/{exhibitor_id}", summary="Delete exhibitor")
-async def delete_exhibitor(
-    exhibitor_id: int,
+@router.delete("/{vip_id}", summary="Delete VIP record")
+async def delete_vip(
+    vip_id: int,
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    await tybot.delete(TABLE_ID, str(exhibitor_id))
+    await tybot.delete(TABLE_ID, str(vip_id))
     return {"message": "Deleted"}

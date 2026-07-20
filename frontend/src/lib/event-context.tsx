@@ -18,16 +18,14 @@ interface RawEvent {
   name: string;
   start_date?: string;
   end_date?: string;
-  venue_name?: string;
-  city?: string;
-  country?: string;
   status?: string;
+  venue?: { id: number; name?: string } | null;
   [key: string]: unknown;
 }
 
 function mapStatus(s?: string): EventStatus {
-  if (s === "live") return "En cours";
-  if (s === "closed") return "Terminé";
+  if (s === "ongoing") return "En cours";
+  if (s === "closed" || s === "archived") return "Terminé";
   return "À venir";
 }
 
@@ -44,7 +42,7 @@ function toActiveEvent(e: RawEvent): ActiveEvent {
     name: e.name,
     shortName: e.name.length > 28 ? e.name.slice(0, 26) + "…" : e.name,
     dates: formatDates(e.start_date, e.end_date),
-    lieu: [e.venue_name, e.city].filter(Boolean).join(", ") || e.country || "",
+    lieu: e.venue?.name ?? "",
     status: mapStatus(e.status),
   };
 }

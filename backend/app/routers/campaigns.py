@@ -1,6 +1,6 @@
 """
 app/routers/campaigns.py — CRUD for C via TybotFlow SmartDB
-Table: campaigns | ID: mp9uvj6iew34p30
+Table: campaigns | Base: Croissance (pmr53m4tfsaf6) | ID: m71641a984d0f9564
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,8 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.core.tybot_client import TybotClient, get_tybot
 from app.core.security import get_current_user
 
-TABLE = "campaigns"
-TABLE_ID = "mp9uvj6iew34p30"
+TABLE_ID = "m71641a984d0f9564"
 
 router = APIRouter(prefix="/api/v1/campaigns", tags=["Campaigns"])
 
@@ -24,8 +23,8 @@ async def list_campaigns(
 ):
     params = {"limit": limit, "offset": (page - 1) * limit}
     if event_id:
-        params["where"] = f"(event_id,eq,{event_id})"
-    return await tybot.list(TABLE, params)
+        params["where"] = f"(events_id,eq,{event_id})"
+    return await tybot.list_by_table(TABLE_ID, params)
 
 
 @router.post("", status_code=201, summary="Create campaign")
@@ -43,7 +42,7 @@ async def get_campaign(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    record = await tybot.get(TABLE, str(campaign_id))
+    record = await tybot.get_by_table(TABLE_ID, str(campaign_id))
     if not record:
         raise HTTPException(status_code=404, detail="Campaign not found")
     return record

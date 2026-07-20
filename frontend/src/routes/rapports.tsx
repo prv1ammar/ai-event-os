@@ -33,26 +33,28 @@ export const Route = createFileRoute("/rapports")({
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
-interface LeadRecord    { id: number; interest_level?: string; source?: string; lead_score?: number; event_id?: number; [k: string]: unknown }
-interface VisitorRecord { id: number; country?: string; buyer_level?: string; event_id?: number; [k: string]: unknown }
-interface ExhibitorRecord { id: number; sector?: string; annual_revenue?: number; event_id?: number; [k: string]: unknown }
-interface SessionRecord { id: number; type?: string; capacity?: number; event_id?: number; [k: string]: unknown }
+interface LeadRecord    { id: number; lead_status?: string; source?: string; country?: string; events_id?: number; [k: string]: unknown }
+interface VisitorRecord { id: number; registration_status?: string; arrived_at?: string; events_id?: number; [k: string]: unknown }
+interface ExhibitorRecord { id: number; registration_status?: string; company_name?: string; events_id?: number; [k: string]: unknown }
+interface SessionRecord { id: number; session_type?: string; events_id?: number; [k: string]: unknown }
+interface OrderRecord   { id: number; total?: string | number; status?: string; order_type?: string; events_id?: number; [k: string]: unknown }
 interface EventRecord   {
-  id: number; name: string; budget?: string | number; status?: string;
-  start_date?: string; end_date?: string; city?: string; country?: string; venue_name?: string;
+  id: number; name: string; status?: string; event_type?: string; is_free?: boolean;
+  start_date?: string; end_date?: string;
+  venue?: { id: number; name?: string } | null;
   [k: string]: unknown;
 }
 
 // ── API ────────────────────────────────────────────────────────────────────────
 
-const fetch100 = <T,>(path: string) => async (): Promise<T[]> => {
-  const raw = await apiRequest<T[] | { list: T[] }>(`${path}?limit=100`);
+const fetchAll = <T,>(path: string) => async (): Promise<T[]> => {
+  const raw = await apiRequest<T[] | { list: T[] }>(`${path}?limit=500`);
   return Array.isArray(raw) ? raw : (raw as { list: T[] }).list ?? [];
 };
 
 async function triggerDownload(table: string, label: string) {
   const token = getToken();
-  const url = `${API_BASE}/api/v1/reports/export?table=${table}&format=csv&limit=100`;
+  const url = `${API_BASE}/api/v1/reports/export?table=${table}&format=csv&limit=500`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) throw new Error(`Erreur ${res.status}`);
   const blob = await res.blob();
@@ -74,33 +76,37 @@ const impactColors: Record<string, string> = {
   "Moyen": "text-warning", "Faible": "text-muted-foreground",
 };
 const STATUS_STYLES: Record<string, string> = {
-  live: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20",
+  ongoing: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/20",
   published: "bg-sky-500/10 text-sky-600 ring-sky-500/20",
   draft: "bg-amber-500/10 text-amber-600 ring-amber-500/20",
   closed: "bg-muted text-muted-foreground ring-border",
+  archived: "bg-muted text-muted-foreground ring-border",
 };
 const STATUS_LABELS: Record<string, string> = {
-  live: "En cours", published: "Publié", draft: "Brouillon", closed: "Clôturé",
+  ongoing: "En cours", published: "Publié", draft: "Brouillon", closed: "Clôturé", archived: "Archivé",
+};
+const LEAD_STATUS_META: Record<string, { label: string; desc: string }> = {
+  new:       { label: "Nouveaux",  desc: "À qualifier — premier contact à établir" },
+  qualified: { label: "Qualifiés", desc: "Profil validé — à contacter rapidement" },
+  contacted: { label: "Contactés", desc: "Échange en cours — suivre la relance" },
+  converted: { label: "Convertis", desc: "Déjà client ou partenaire" },
+  lost:      { label: "Perdus",    desc: "Sans suite — à requalifier plus tard" },
 };
 const DOWNLOAD_ITEMS = [
-  { label: "Leads",     desc: "Scores, sources, intérêt",   icon: FileSpreadsheet, color: "bg-success/10 text-success",       table: "leads" },
-  { label: "Visiteurs", desc: "Pays, type, niveau d'achat", icon: FileSpreadsheet, color: "bg-info/10 text-info",              table: "visitors" },
-  { label: "Exposants", desc: "Secteurs, revenus",          icon: FileText,        color: "bg-destructive/10 text-destructive", table: "exhibitors" },
-  { label: "Programme", desc: "Sessions et horaires",       icon: Presentation,    color: "bg-warning/10 text-warning",         table: "sessions" },
+  { label: "Leads",     desc: "Contacts CRM, statut, source",  icon: FileSpreadsheet, color: "bg-success/10 text-success",         table: "leads" },
+  { label: "Visiteurs", desc: "Inscriptions et arrivées",      icon: FileSpreadsheet, color: "bg-info/10 text-info",               table: "visitors" },
+  { label: "Exposants", desc: "Sociétés et statuts",           icon: FileText,        color: "bg-destructive/10 text-destructive", table: "exhibitors" },
+  { label: "Programme", desc: "Sessions et horaires",          icon: Presentation,    color: "bg-warning/10 text-warning",         table: "sessions" },
+  { label: "Commandes", desc: "Billets, stands, sponsoring",   icon: FileSpreadsheet, color: "bg-primary/10 text-primary",         table: "orders" },
 ];
 
 // ── Small helpers ──────────────────────────────────────────────────────────────
 
-function fmtNum(n: number) {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${Math.round(n / 1_000)}K`;
-  return String(n);
-}
-function fmtBudget(n: number) {
+function fmtMAD(n: number) {
   if (!n) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M MAD`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}K MAD`;
-  return `${n} MAD`;
+  return `${Math.round(n)} MAD`;
 }
 function fmtDate(iso?: string) {
   if (!iso) return "—";
@@ -125,6 +131,10 @@ function InfoTip({ text }: { text: string }) {
     </span>
   );
 }
+function byEvent<T extends { events_id?: number }>(rows: T[], eventId: string): T[] {
+  if (eventId === "all") return rows;
+  return rows.filter((r) => String(r.events_id) === eventId);
+}
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
@@ -137,101 +147,90 @@ function Rapports() {
 
   const results = useQueries({
     queries: [
-      { queryKey: ["rap-visitors"],   queryFn: fetch100<VisitorRecord>("/api/v1/visitors") },
-      { queryKey: ["rap-leads"],      queryFn: fetch100<LeadRecord>("/api/v1/leads") },
-      { queryKey: ["rap-exhibitors"], queryFn: fetch100<ExhibitorRecord>("/api/v1/exhibitors") },
-      { queryKey: ["rap-sessions"],   queryFn: fetch100<SessionRecord>("/api/v1/sessions") },
-      { queryKey: ["rap-events"],     queryFn: fetch100<EventRecord>("/api/v1/events") },
+      { queryKey: ["rap-visitors"],   queryFn: fetchAll<VisitorRecord>("/api/v1/visitors") },
+      { queryKey: ["rap-leads"],      queryFn: fetchAll<LeadRecord>("/api/v1/leads") },
+      { queryKey: ["rap-exhibitors"], queryFn: fetchAll<ExhibitorRecord>("/api/v1/exhibitors") },
+      { queryKey: ["rap-sessions"],   queryFn: fetchAll<SessionRecord>("/api/v1/sessions") },
+      { queryKey: ["rap-events"],     queryFn: fetchAll<EventRecord>("/api/v1/events") },
+      { queryKey: ["rap-orders"],     queryFn: fetchAll<OrderRecord>("/api/v1/orders") },
     ],
   });
 
-  const allVisitors   = results[0].data ?? [];
-  const allLeads      = results[1].data ?? [];
-  const allExhibitors = results[2].data ?? [];
-  const allSessions   = results[3].data ?? [];
-  const events        = results[4].data ?? [];
-  const isLoading     = results.some((r) => r.isLoading);
+  const events    = results[4].data ?? [];
+  const isLoading = results.some((r) => r.isLoading);
 
   const selectedEvent = events.find((e) => String(e.id) === selectedEventId) ?? null;
-
-  // ── Event-scoped data ─────────────────────────────────────────────────────────
-  // Sessions have event_id (one-to-one with event) → filtered precisely by active event
-  // Visitors / Leads / Exhibitors are M2M with events via TybotFlow's app-layer link field
-  // (not a database FK → PostgREST can't filter through it) → always show global data
-  const sessions   = selectedEventId === "all"
-    ? allSessions
-    : allSessions.filter((s) => String(s.event_id) === selectedEventId);
-
-  const visitors   = allVisitors;
-  const leads      = allLeads;
-  const exhibitors = allExhibitors;
-
   const isFiltered = selectedEventId !== "all";
+  const scopeLabel = isFiltered ? "cet événement" : "global";
+
+  // Every table now carries a real events_id FK → precise per-event filtering
+  const visitors   = byEvent(results[0].data ?? [], selectedEventId);
+  const leads      = byEvent(results[1].data ?? [], selectedEventId);
+  const exhibitors = byEvent(results[2].data ?? [], selectedEventId);
+  const sessions   = byEvent(results[3].data ?? [], selectedEventId);
+  const orders     = byEvent(results[5].data ?? [], selectedEventId);
 
   // ── Metrics ───────────────────────────────────────────────────────────────────
 
-  const hotCount  = leads.filter((l) => l.interest_level === "hot").length;
-  const warmCount = leads.filter((l) => l.interest_level === "warm").length;
-  const coldCount = leads.filter((l) => l.interest_level === "cold").length;
-  const convCount = leads.filter((l) => l.interest_level === "converted").length;
-  const qualifiedLeads = hotCount + warmCount + convCount;
+  const statusCount = (s: string) => leads.filter((l) => l.lead_status === s).length;
+  const qualifiedLeads = statusCount("qualified") + statusCount("contacted") + statusCount("converted");
   const leadQualityPct = leads.length > 0 ? Math.round((qualifiedLeads / leads.length) * 100) : 0;
-  const avgScore = leads.length > 0
-    ? Math.round(leads.reduce((s, l) => s + (Number(l.lead_score) || 0), 0) / leads.length) : 0;
   const convRate = visitors.length > 0 ? ((leads.length / visitors.length) * 100).toFixed(1) : "—";
-  const uniqueCountries = new Set(visitors.map((v) => v.country).filter(Boolean)).size;
-  const decisionMakers  = visitors.filter((v) => v.buyer_level === "decision_maker").length;
-  const totalBudget = selectedEvent ? Number(selectedEvent.budget) || 0
-    : events.reduce((s, e) => { const n = Number(e.budget); return isNaN(n) ? s : s + n; }, 0);
-  const totalRevenue = exhibitors.reduce((s, e) => { const n = Number(e.annual_revenue); return isNaN(n) ? s : s + n; }, 0);
+  const uniqueCountries = new Set(leads.map((l) => l.country).filter(Boolean)).size;
+  const arrivedVisitors = visitors.filter((v) => !!v.arrived_at).length;
+  const confirmedExhibitors = exhibitors.filter((e) => e.registration_status === "confirmed").length;
+  const revenue = orders
+    .filter((o) => ["paid", "partial"].includes(o.status ?? ""))
+    .reduce((s, o) => { const n = Number(o.total); return isNaN(n) ? s : s + n; }, 0);
 
   // ── Chart data ─────────────────────────────────────────────────────────────────
 
-  const leadsQuality = [
-    { name: "Chauds",    value: hotCount,  color: COLORS[0], desc: "Fort intérêt — à relancer en priorité" },
-    { name: "Tièdes",    value: warmCount, color: COLORS[1], desc: "Intérêt modéré — nurturing nécessaire" },
-    { name: "Convertis", value: convCount, color: COLORS[2], desc: "Déjà client ou partenaire" },
-    { name: "Froids",    value: coldCount, color: COLORS[3], desc: "Faible intérêt — à requalifier" },
-  ].filter((l) => l.value > 0);
+  const leadsQuality = Object.entries(LEAD_STATUS_META)
+    .map(([key, meta], i) => ({ key, name: meta.label, desc: meta.desc, value: statusCount(key), color: COLORS[i % COLORS.length] }))
+    .filter((l) => l.value > 0);
 
-  const topCountries = groupCount(visitors, "country").slice(0, 8);
+  const topCountries = groupCount(leads, "country").slice(0, 8);
   const leadSources  = groupCount(leads, "source");
-  const exhibSectors = groupCount(exhibitors, "sector").slice(0, 6);
-  const sessionTypes = groupCount(sessions, "type");
+  const exhibStatus  = groupCount(exhibitors, "registration_status");
+  const sessionTypes = groupCount(sessions, "session_type");
 
   // Radar
   const radarLeads      = leadQualityPct;
-  const radarConversion = visitors.length > 0 ? Math.min(Math.round(leads.length / visitors.length * 100), 95) : 0;
-  const radarIntl       = visitors.length > 0 ? Math.round(uniqueCountries / visitors.length * 100) : 0;
-  const radarExposants  = exhibitors.length > 0 ? Math.round(exhibitors.filter((e) => Number(e.annual_revenue) > 0).length / exhibitors.length * 100) : 0;
-  const sessionTarget   = Math.max((selectedEvent ? 1 : events.length) * 2, 1);
+  const radarConversion = visitors.length > 0 ? Math.min(Math.round(leads.length / visitors.length * 100), 100) : 0;
+  const radarArrival    = visitors.length > 0 ? Math.round(arrivedVisitors / visitors.length * 100) : 0;
+  const radarExposants  = exhibitors.length > 0 ? Math.round(confirmedExhibitors / exhibitors.length * 100) : 0;
+  const sessionTarget   = Math.max((isFiltered ? 1 : events.length) * 2, 1);
   const radarProgramme  = Math.min(Math.round(sessions.length / sessionTarget * 100), 100);
 
   const radarData = [
     { axis: "Leads qualité",  value: radarLeads,      goal: 80, detail: `${qualifiedLeads}/${leads.length} qualifiés` },
     { axis: "Conversion",     value: radarConversion, goal: 75, detail: `${leads.length} leads / ${visitors.length} visiteurs` },
-    { axis: "International",  value: radarIntl,       goal: 70, detail: `${uniqueCountries} pays distincts` },
-    { axis: "Exposants",      value: radarExposants,  goal: 80, detail: `${exhibitors.filter((e) => Number(e.annual_revenue) > 0).length}/${exhibitors.length} avec CA` },
+    { axis: "Présence",       value: radarArrival,    goal: 70, detail: `${arrivedVisitors}/${visitors.length} arrivés sur site` },
+    { axis: "Exposants",      value: radarExposants,  goal: 80, detail: `${confirmedExhibitors}/${exhibitors.length} confirmés` },
     { axis: "Programme",      value: radarProgramme,  goal: 75, detail: `${sessions.length} sessions` },
   ];
 
   // Recommendations
   const recommendations: { text: string; impact: string; effort: string }[] = [];
-  if (hotCount > 0) recommendations.push({ text: `Accélérer le suivi des ${hotCount} lead${hotCount > 1 ? "s" : ""} chaud${hotCount > 1 ? "s" : ""} — fort potentiel de conversion immédiat`, impact: "Très élevé", effort: "Faible" });
-  if (coldCount > 0 && coldCount >= leads.length * 0.25) recommendations.push({ text: `Relancer les ${coldCount} leads froids avec une campagne email personnalisée`, impact: "Moyen", effort: "Faible" });
-  const matchLeads = leads.filter((l) => l.source === "matchmaking").length;
-  if (leads.length > 0 && matchLeads / leads.length < 0.3) recommendations.push({ text: "Développer le matchmaking IA B2B pour augmenter les leads qualifiés", impact: "Élevé", effort: "Moyen" });
-  if (uniqueCountries >= 5) recommendations.push({ text: `Capitaliser sur la diversité internationale — ${uniqueCountries} pays représentés`, impact: "Élevé", effort: "Moyen" });
-  if (decisionMakers > 0) recommendations.push({ text: `Programme VIP pour les ${decisionMakers} décideur${decisionMakers > 1 ? "s" : ""} identifié${decisionMakers > 1 ? "s" : ""}`, impact: "Très élevé", effort: "Moyen" });
-  if (totalBudget > 0) recommendations.push({ text: `Optimiser l'allocation du budget ${fmtBudget(totalBudget)} sur les événements à fort ROI`, impact: "Élevé", effort: "Élevé" });
+  const newLeads = statusCount("new");
+  if (newLeads > 0) recommendations.push({ text: `Qualifier les ${newLeads} nouveau${newLeads > 1 ? "x" : ""} lead${newLeads > 1 ? "s" : ""} — premier contact à établir rapidement`, impact: "Très élevé", effort: "Faible" });
+  const qualifiedOnly = statusCount("qualified");
+  if (qualifiedOnly > 0) recommendations.push({ text: `Contacter les ${qualifiedOnly} lead${qualifiedOnly > 1 ? "s" : ""} qualifié${qualifiedOnly > 1 ? "s" : ""} avant la fin de l'événement`, impact: "Très élevé", effort: "Faible" });
+  const pendingVisitors = visitors.filter((v) => v.registration_status === "pending").length;
+  if (pendingVisitors > 0) recommendations.push({ text: `Relancer les ${pendingVisitors} inscription${pendingVisitors > 1 ? "s" : ""} en attente par email de confirmation`, impact: "Élevé", effort: "Faible" });
+  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+  if (pendingOrders > 0) recommendations.push({ text: `Encaisser les ${pendingOrders} commande${pendingOrders > 1 ? "s" : ""} en attente de paiement`, impact: "Très élevé", effort: "Moyen" });
+  if (uniqueCountries >= 3) recommendations.push({ text: `Capitaliser sur la diversité internationale — ${uniqueCountries} pays représentés dans le CRM`, impact: "Élevé", effort: "Moyen" });
+  const pendingExhibitors = exhibitors.length - confirmedExhibitors;
+  if (pendingExhibitors > 0) recommendations.push({ text: `Finaliser les ${pendingExhibitors} dossier${pendingExhibitors > 1 ? "s" : ""} exposant${pendingExhibitors > 1 ? "s" : ""} non confirmé${pendingExhibitors > 1 ? "s" : ""}`, impact: "Élevé", effort: "Moyen" });
 
   // KPIs
   const kpis = [
-    { label: "Visiteurs",       value: isLoading ? "…" : visitors.length.toLocaleString("fr-FR"),   delta: `${uniqueCountries} pays`,                                  sub: "global",   icon: Users,        tone: "primary" as KpiTone, trend: "up" as const },
-    { label: "Leads générés",   value: isLoading ? "…" : leads.length.toLocaleString("fr-FR"),      delta: `score moy. ${avgScore}`,                                   sub: "global",   icon: TrendingUp,   tone: "green"   as KpiTone, trend: "up" as const },
-    { label: "Exposants",       value: isLoading ? "…" : exhibitors.length.toLocaleString("fr-FR"), delta: totalRevenue > 0 ? `CA ${fmtNum(totalRevenue)}` : undefined, sub: "global",  icon: Building2,    tone: "blue"    as KpiTone, trend: "up" as const },
-    { label: "Sessions",        value: isLoading ? "…" : sessions.length.toLocaleString("fr-FR"),   delta: selectedEvent ? selectedEvent.name.slice(0, 16) : `${events.length} événements`, sub: isFiltered ? "cet événement" : "global", icon: CalendarDays, tone: "violet" as KpiTone, trend: "up" as const },
-    { label: "Taux conversion", value: isLoading ? "…" : `${convRate}%`,                            delta: `${hotCount} leads chauds`,                                 sub: "global",   icon: Globe,        tone: "amber"   as KpiTone, trend: "up" as const },
+    { label: "Visiteurs",       value: isLoading ? "…" : visitors.length.toLocaleString("fr-FR"),   delta: `${arrivedVisitors} arrivés`,         sub: scopeLabel, icon: Users,        tone: "primary" as KpiTone, trend: "up" as const },
+    { label: "Leads générés",   value: isLoading ? "…" : leads.length.toLocaleString("fr-FR"),      delta: `${leadQualityPct}% qualifiés`,        sub: scopeLabel, icon: TrendingUp,   tone: "green"   as KpiTone, trend: "up" as const },
+    { label: "Exposants",       value: isLoading ? "…" : exhibitors.length.toLocaleString("fr-FR"), delta: `${confirmedExhibitors} confirmés`,    sub: scopeLabel, icon: Building2,    tone: "blue"    as KpiTone, trend: "up" as const },
+    { label: "Sessions",        value: isLoading ? "…" : sessions.length.toLocaleString("fr-FR"),   delta: selectedEvent ? selectedEvent.name.slice(0, 16) : `${events.length} événements`, sub: scopeLabel, icon: CalendarDays, tone: "violet" as KpiTone, trend: "up" as const },
+    { label: "Revenu encaissé", value: isLoading ? "…" : fmtMAD(revenue),                            delta: `${convRate}% conversion`,             sub: scopeLabel, icon: Globe,        tone: "amber"   as KpiTone, trend: "up" as const },
   ];
 
   return (
@@ -263,13 +262,13 @@ function Rapports() {
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Lieu</p>
               <p className="font-medium text-foreground mt-0.5 text-sm flex items-center gap-1">
                 <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                {[selectedEvent.venue_name, selectedEvent.city, selectedEvent.country].filter(Boolean).join(", ") || "—"}
+                {selectedEvent.venue?.name ?? "—"}
               </p>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Budget</p>
-                <p className="font-semibold text-foreground mt-0.5">{fmtBudget(Number(selectedEvent.budget) || 0)}</p>
+                <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Accès</p>
+                <p className="font-semibold text-foreground mt-0.5">{selectedEvent.is_free ? "Gratuit" : "Payant"}</p>
               </div>
               <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset", STATUS_STYLES[selectedEvent.status ?? "draft"] ?? STATUS_STYLES.draft)}>
                 <BadgeCheck className="h-3 w-3 mr-1" />{STATUS_LABELS[selectedEvent.status ?? "draft"] ?? selectedEvent.status}
@@ -294,7 +293,7 @@ function Rapports() {
                 <InfoTip text="5 axes calculés sur les données de la sélection actuelle." />
               </h2>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Sessions : {selectedEvent ? selectedEvent.name : "tous événements"} · leads/visiteurs/exposants : global
+                {selectedEvent ? `Périmètre : ${selectedEvent.name}` : "Périmètre : tous les événements"}
               </p>
             </div>
             <div className="flex items-center gap-3 text-xs">
@@ -333,7 +332,7 @@ function Rapports() {
         <Surface className="p-6">
           <h2 className="font-display text-base font-semibold text-foreground flex items-center gap-1.5">
             Qualité des leads
-            <InfoTip text="interest_level de chaque lead — hot/warm/converted = qualifiés." />
+            <InfoTip text="lead_status de chaque contact CRM — qualified/contacted/converted = qualifiés." />
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5 mb-3">
             {leads.length} leads · {leadQualityPct}% qualifiés
@@ -346,7 +345,7 @@ function Rapports() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie data={leadsQuality} innerRadius={46} outerRadius={72} paddingAngle={3} dataKey="value" stroke="none">
-                      {leadsQuality.map((e) => <Cell key={e.name} fill={e.color} />)}
+                      {leadsQuality.map((e) => <Cell key={e.key} fill={e.color} />)}
                     </Pie>
                   </PieChart>
                 </ResponsiveContainer>
@@ -357,7 +356,7 @@ function Rapports() {
               </div>
               <ul className="space-y-2 mt-3">
                 {leadsQuality.map((l) => (
-                  <li key={l.name} className="rounded-lg bg-muted/40 px-3 py-2">
+                  <li key={l.key} className="rounded-lg bg-muted/40 px-3 py-2">
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
                         <span className="h-2 w-2 rounded-sm" style={{ background: l.color }} />{l.name}
@@ -376,15 +375,15 @@ function Rapports() {
       {/* Charts row */}
       <div className="grid gap-4 lg:grid-cols-3">
         <Surface className="p-6">
-          <h2 className="font-display text-base font-semibold text-foreground mb-1">Top pays visiteurs</h2>
-          <p className="text-xs text-muted-foreground mb-3">{uniqueCountries} pays · {visitors.length} visiteurs · global</p>
+          <h2 className="font-display text-base font-semibold text-foreground mb-1">Top pays leads</h2>
+          <p className="text-xs text-muted-foreground mb-3">{uniqueCountries} pays · {leads.length} leads · {scopeLabel}</p>
           {topCountries.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">Aucune donnée</p> : (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={topCountries} layout="vertical" margin={{ left: 0, right: 16 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="oklch(0.92 0.012 285)" />
                 <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                 <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={72} />
-                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, "Visiteurs"]} />
+                <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, "Leads"]} />
                 <Bar dataKey="value" fill="oklch(0.55 0.24 280)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -393,7 +392,7 @@ function Rapports() {
 
         <Surface className="p-6">
           <h2 className="font-display text-base font-semibold text-foreground mb-1">Sources des leads</h2>
-          <p className="text-xs text-muted-foreground mb-3">{leads.length} leads · {leadSources.length} sources · global</p>
+          <p className="text-xs text-muted-foreground mb-3">{leads.length} leads · {leadSources.length} sources · {scopeLabel}</p>
           {leadSources.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">Aucune donnée</p> : (
             <>
               <ResponsiveContainer width="100%" height={130}>
@@ -423,27 +422,27 @@ function Rapports() {
         </Surface>
 
         <Surface className="p-6">
-          <h2 className="font-display text-base font-semibold text-foreground mb-1">Secteurs exposants</h2>
-          <p className="text-xs text-muted-foreground mb-3">{exhibitors.length} exposants · global</p>
-          {exhibSectors.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">Aucune donnée</p> : (
+          <h2 className="font-display text-base font-semibold text-foreground mb-1">Statut des exposants</h2>
+          <p className="text-xs text-muted-foreground mb-3">{exhibitors.length} exposants · {scopeLabel}</p>
+          {exhibStatus.length === 0 ? <p className="text-sm text-muted-foreground py-6 text-center">Aucune donnée</p> : (
             <>
               <ResponsiveContainer width="100%" height={140}>
-                <BarChart data={exhibSectors} layout="vertical" margin={{ left: 0, right: 16 }}>
+                <BarChart data={exhibStatus} layout="vertical" margin={{ left: 0, right: 16 }}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="oklch(0.92 0.012 285)" />
                   <XAxis type="number" tick={{ fontSize: 11 }} allowDecimals={false} />
                   <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={90} />
                   <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} formatter={(v: number) => [v, "Exposants"]} />
                   <Bar dataKey="value" radius={[0, 4, 4, 0]}>
-                    {exhibSectors.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                    {exhibStatus.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
               <ul className="mt-3 space-y-1">
-                {exhibSectors.map((s, i) => (
+                {exhibStatus.map((s, i) => (
                   <li key={s.name} className="flex items-center justify-between text-xs">
                     <span className="flex items-center gap-1.5">
                       <span className="h-2 w-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="text-foreground">{s.name}</span>
+                      <span className="capitalize text-foreground">{s.name.replace(/_/g, " ")}</span>
                     </span>
                     <span className="font-semibold tabular-nums">{s.value}</span>
                   </li>
@@ -492,7 +491,7 @@ function Rapports() {
                 <h2 className="font-display text-base font-semibold text-foreground">Recommandations IA</h2>
                 <p className="text-xs text-muted-foreground">
                   {selectedEvent
-                    ? `Générées depuis les leads, visiteurs et exposants de "${selectedEvent.name}"`
+                    ? `Générées depuis les données de "${selectedEvent.name}"`
                     : "Générées depuis l'ensemble de vos données — sélectionnez un événement dans l'en-tête pour affiner"}
                 </p>
               </div>
@@ -545,7 +544,7 @@ function Rapports() {
           <h2 className="font-display text-base font-semibold text-foreground">Exports CSV</h2>
           <p className="text-xs text-muted-foreground">Données temps réel depuis TybotFlow</p>
         </div>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           {DOWNLOAD_ITEMS.map((d) => {
             const isThisDownloading = downloading === d.table;
             return (
