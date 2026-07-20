@@ -52,7 +52,8 @@ interface Event {
   cover_image_url?: string;
   status?: string;
   is_free?: boolean;
-  venues?: Array<{ id: number; name?: string }>;
+  venues_id?: number | null;
+  venue?: { id: number; name?: string } | null;
   [key: string]: unknown;
 }
 
@@ -86,24 +87,14 @@ async function fetchVenues(): Promise<VenueOption[]> {
   return rows.map((v) => ({ id: Number(v.id), name: String(v.name ?? `Lieu #${v.id}`) }));
 }
 
-async function linkVenue(venueId: number, eventId: number): Promise<void> {
-  await smartDbRequest("venues", "PATCH", { id: venueId, events_id: eventId });
-}
-async function unlinkVenue(venueId: number): Promise<void> {
-  await smartDbRequest("venues", "PATCH", { id: venueId, events_id: null });
-}
-
 async function createEvent({ data, venueId }: { data: Partial<Event>; venueId?: number | null }): Promise<void> {
-  const created = await smartDbRequest("events", "POST", data as Record<string, unknown>) as { id: number };
-  if (venueId) await linkVenue(venueId, created.id);
+  await smartDbRequest("events", "POST", { ...data, venues_id: venueId ?? null } as Record<string, unknown>);
 }
 
-async function updateEvent({ id, data, venueId, prevVenueId }: {
-  id: number; data: Partial<Event>; venueId?: number | null; prevVenueId?: number | null;
+async function updateEvent({ id, data, venueId }: {
+  id: number; data: Partial<Event>; venueId?: number | null;
 }): Promise<void> {
-  await smartDbRequest("events", "PATCH", { id, ...data });
-  if (prevVenueId && prevVenueId !== venueId) await unlinkVenue(prevVenueId);
-  if (venueId) await linkVenue(venueId, id);
+  await smartDbRequest("events", "PATCH", { id, ...data, venues_id: venueId ?? null });
 }
 
 async function deleteEvent(id: number): Promise<void> {
@@ -127,7 +118,7 @@ function getEventDate(e: Event): string {
   return `${formatDate(e.start_date)}${e.end_date ? ` — ${formatDate(e.end_date)}` : ""}`;
 }
 function getEventLocation(e: Event): string {
-  return e.venues?.[0]?.name || "—";
+  return e.venue?.name || "—";
 }
 
 const statusStyles: Record<string, string> = {
@@ -168,7 +159,7 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
     description: "",
     ...initial,
   });
-  const [venueId, setVenueId] = useState<number | undefined>(initial.venues?.[0]?.id);
+  const [venueId, setVenueId] = useState<number | undefined>(initial.venue?.id ?? undefined);
   const [showNewVenue, setShowNewVenue] = useState(false);
   const [newVenue, setNewVenue] = useState({ name: "", city: "", address: "", total_capacity: "", total_surface_sqm: "" });
 
@@ -202,7 +193,8 @@ function EventForm({ initial = {}, onSubmit, onCancel, loading }: EventFormProps
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const payload = { ...form };
-    delete payload.venues;
+    delete payload.venue;
+    delete payload.venues_id;
     if (!payload.start_date) delete payload.start_date;
     if (!payload.end_date) delete payload.end_date;
     if (!payload.description) delete payload.description;
@@ -716,7 +708,7 @@ function EvenementsPage() {
               initial={editEvent}
               loading={updateMut.isPending}
               onCancel={() => setEditEvent(null)}
-              onSubmit={(data, venueId) => updateMut.mutate({ id: editEvent.id, data, venueId, prevVenueId: editEvent.venues?.[0]?.id })}
+              onSubmit={(data, venueId) => updateMut.mutate({ id: editEvent.id, data, venueId })}
             />
           )}
           {updateMut.isError && (

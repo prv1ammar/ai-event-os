@@ -51,7 +51,7 @@ interface Venue {
   latitude?: string | number;
   longitude?: string | number;
   status?: string;
-  events?: { id: number; name?: string } | null;
+  events?: Array<{ id: number; name?: string }>;
   [key: string]: unknown;
 }
 
@@ -72,6 +72,12 @@ const toneStyles: Record<string, string> = {
 function num(v: string | number | undefined): number {
   const n = Number(v ?? 0);
   return isNaN(n) ? 0 : n;
+}
+
+// A venue can now host many events (events.venues_id → many-to-one), so the
+// reverse side is always an array — even when there's only one linked event.
+function eventNames(v: { events?: Array<{ name?: string }> }): string[] {
+  return (v.events ?? []).map((e) => e.name).filter((n): n is string => !!n);
 }
 
 // ─── API ─────────────────────────────────────────────────────────────────────
@@ -174,9 +180,10 @@ function VenueForm({ initial = {}, onSubmit, onCancel, loading }: VenueFormProps
         <Textarea id="v-description" rows={3} className="resize-none"
           value={form.description ?? ""} onChange={(e) => set("description", e.target.value)} placeholder="Décrivez le lieu…" />
       </div>
-      {initial.events && (
+      {initial.events && initial.events.length > 0 && (
         <p className="text-xs text-muted-foreground -mt-2">
-          Lié à l'événement <span className="font-medium text-foreground">{initial.events.name}</span> — se gère depuis la fiche événement.
+          Lié à {initial.events.length > 1 ? "événements" : "l'événement"}{" "}
+          <span className="font-medium text-foreground">{eventNames(initial).join(", ")}</span> — se gère depuis la fiche événement.
         </p>
       )}
       <div className="flex items-center justify-end gap-2 pt-2 border-t border-border">
@@ -213,7 +220,7 @@ function VenueDetail({ venue }: { venue: Venue }) {
       <div className="grid grid-cols-2 gap-3 text-sm">
         {[
           { label: "Adresse", value: venue.address || "—" },
-          { label: "Événement lié", value: venue.events?.name ?? "—" },
+          { label: "Événement(s) lié(s)", value: eventNames(venue).join(", ") || "—" },
           { label: "Capacité", value: num(venue.total_capacity) > 0 ? `${num(venue.total_capacity)} pers.` : "—" },
           { label: "Surface", value: num(venue.total_surface_sqm) > 0 ? `${num(venue.total_surface_sqm)} m²` : "—" },
         ].map(({ label, value }) => (
@@ -401,10 +408,17 @@ function LieuxPage() {
                             </span>
                           ) : <span className="text-sm text-muted-foreground">—</span>}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate">
-                          {v.events?.name
-                            ? <span className="text-primary/80 font-medium">{v.events.name}</span>
-                            : <span className="text-muted-foreground/50">—</span>}
+                        <TableCell className="text-sm text-muted-foreground max-w-[160px] truncate" title={eventNames(v).join(", ")}>
+                          {(() => {
+                            const names = eventNames(v);
+                            if (names.length === 0) return <span className="text-muted-foreground/50">—</span>;
+                            const extra = names.length - 1;
+                            return (
+                              <span className="text-primary/80 font-medium">
+                                {names[0]}{extra > 0 && ` +${extra}`}
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">

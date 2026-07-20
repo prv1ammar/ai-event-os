@@ -2,7 +2,12 @@
 app/routers/venues.py — CRUD for venues via TybotFlow SmartDB
 Table: venues | Base: Evenements (pmr53j9yjvo1c) | ID: maeaf41fb5ddb9049
 
-Each venue links to at most one event via events_id.
+A venue can host many events: the FK lives on the event side
+(events.venues_id), and each venue record embeds the reverse array as
+"events". There is no events_id column on venues itself (an older,
+one-venue-per-event column by that name existed briefly and was removed
+when the relation was redirected) — filtering by event_id below checks
+each venue's embedded "events" array in Python instead of a `where` clause.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,9 +28,18 @@ async def list_venues(
     tybot: TybotClient = Depends(get_tybot),
     current_user=Depends(get_current_user),
 ):
-    params = {"limit": limit, "offset": (page - 1) * limit}
     if event_id:
-        params["where"] = f"(events_id,eq,{event_id})"
+        raw = await tybot.list_by_table(TABLE_ID, {"limit": 500, "offset": 0})
+        rows = raw.get("list", raw) if isinstance(raw, dict) else raw
+        rows = [r for r in rows if any(e.get("id") == event_id for e in (r.get("events") or []))]
+
+        start = (page - 1) * limit
+        page_rows = rows[start:start + limit]
+        if isinstance(raw, dict) and "list" in raw:
+            return {**raw, "list": page_rows}
+        return page_rows
+
+    params = {"limit": limit, "offset": (page - 1) * limit}
     return await tybot.list_by_table(TABLE_ID, params)
 
 

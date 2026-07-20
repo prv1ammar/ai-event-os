@@ -34,7 +34,7 @@ interface DashboardData {
   events: Array<{
     id: number; name?: string; start_date?: string; end_date?: string;
     event_type?: string; status?: string; is_free?: boolean;
-    venues?: Array<{ id: number; name?: string }>;
+    venue?: { id: number; name?: string } | null;
   }>;
   kpis: {
     visitors_total: number; visitors_confirmed: number; visitors_arrived: number;
@@ -236,7 +236,7 @@ function Dashboard() {
     ? events.map((e) => e.name).join(" · ")
     : [
         fmtDate(events[0]?.start_date) !== "—" ? `${fmtDate(events[0]?.start_date)} — ${fmtDate(events[0]?.end_date)}` : null,
-        events[0]?.venues?.[0]?.name ?? null,
+        events[0]?.venue?.name ?? null,
       ].filter(Boolean).join(" · ");
 
   // ── KPI cards ────────────────────────────────────────────────────────────────

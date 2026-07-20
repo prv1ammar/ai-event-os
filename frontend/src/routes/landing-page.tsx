@@ -68,7 +68,7 @@ interface LandingPage {
 interface EventOption {
   id: number; name: string;
   start_date?: string; end_date?: string;
-  venues?: Array<{ id: number; name?: string }>;
+  venue?: { id: number; name?: string } | null;
 }
 
 interface SessionRecord {
@@ -148,7 +148,7 @@ const EXHIBITOR_DEFAULTS: Partial<typeof PAGE_DEFAULTS> = {
 
 function openFullPreview(page: LandingPage, event?: EventOption, sessions: SessionRecord[] = []) {
   const heroTitle    = page.hero_title    || event?.name    || "Votre événement";
-  const heroSubtitle = page.hero_subtitle || event?.venues?.[0]?.name || "";
+  const heroSubtitle = page.hero_subtitle || event?.venue?.name || "";
   const ctaText      = page.cta_text      || (page.page_type === "exhibitor" ? "Devenir exposant" : "S'inscrire gratuitement");
   const dateStr      = event?.start_date  ? fmtDate(event.start_date) : "";
   const endDateStr   = event?.end_date    ? ` → ${fmtDate(event.end_date)}` : "";
@@ -463,7 +463,7 @@ function openFullPreview(page: LandingPage, event?: EventOption, sessions: Sessi
 
 function LivePreview({ page, event }: { page: LandingPage; event?: EventOption }) {
   const heroTitle    = page.hero_title    || event?.name    || "Votre événement";
-  const heroSubtitle = page.hero_subtitle || event?.venues?.[0]?.name || "";
+  const heroSubtitle = page.hero_subtitle || event?.venue?.name || "";
   const ctaText      = page.cta_text      || (page.page_type === "exhibitor" ? "Devenir exposant" : "S'inscrire gratuitement");
   const dateStr      = event?.start_date  ? fmtDate(event.start_date) : "";
   const eventShort   = event?.name?.split(" ").slice(0, 2).join(" ").toUpperCase() ?? "AI EVENT";

@@ -19,7 +19,7 @@ interface RawEvent {
   start_date?: string;
   end_date?: string;
   status?: string;
-  venues?: Array<{ id: number; name?: string }>;
+  venue?: { id: number; name?: string } | null;
   [key: string]: unknown;
 }
 
@@ -42,7 +42,7 @@ function toActiveEvent(e: RawEvent): ActiveEvent {
     name: e.name,
     shortName: e.name.length > 28 ? e.name.slice(0, 26) + "…" : e.name,
     dates: formatDates(e.start_date, e.end_date),
-    lieu: e.venues?.[0]?.name ?? "",
+    lieu: e.venue?.name ?? "",
     status: mapStatus(e.status),
   };
 }

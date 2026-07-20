@@ -52,7 +52,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { cn } from "@/lib/utils";
 import { apiRequest, smartDbRequest } from "@/lib/api";
-import { useEvent } from "@/lib/event-context";
 import { useRef, useState } from "react";
 
 export const Route = createFileRoute("/visiteurs")({
@@ -477,11 +476,17 @@ function VisitorDrawer({ visitor, open, onClose, onEdit }: { visitor: Visitor | 
 
 function VisiteursPage() {
   const qc = useQueryClient();
-  const { activeEvent } = useEvent();
-  const eventId = activeEvent.id !== "0" ? activeEvent.id : null;
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [eventFilter, setEventFilter] = useState("all");
+  const eventId = eventFilter !== "all" ? eventFilter : null;
+
+  const { data: events = [] } = useQuery({
+    queryKey: ["event-options"],
+    queryFn: fetchEventOptions,
+    staleTime: 5 * 60 * 1000,
+  });
   const [selectedVisitor, setSelectedVisitor] = useState<Visitor | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
@@ -627,6 +632,19 @@ function VisiteursPage() {
           <Input placeholder="Rechercher un visiteur..." className="h-9 pl-9 bg-card text-sm"
             value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
+        {events.length > 0 && (
+          <Select value={eventFilter} onValueChange={(v) => { setEventFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-52 h-9 bg-card text-sm">
+              <SelectValue placeholder="Tous les événements" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tous les événements</SelectItem>
+              {events.map((e) => (
+                <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[160px] h-9 bg-card text-sm">
             <SelectValue placeholder="Tous les statuts" />

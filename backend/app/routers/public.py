@@ -20,6 +20,9 @@ router = APIRouter(prefix="/api/v1/public", tags=["Public"])
 VISITEURS_TABLE_ID = "m3b5a520cdf13cc6e"   # Participants base
 EXPOSANTS_TABLE_ID = "m0b2dd0eb02083bf3"   # Participants base
 SESSIONS_TABLE_ID = "mabd59f3b36f4df83"    # Evenements base
+CONTACTS_TABLE_ID = "m78f17b1f5fcb640d"    # CRM base — visiteurs/exposants have no
+                                            # events_id column; the event link goes
+                                            # through a contacts row (contacts_id).
 
 
 def _now() -> str:
@@ -52,7 +55,14 @@ async def register_visitor(data: VisitorRegistration, tybot: TybotClient = Depen
     if data.phone:
         payload["phone"] = data.phone
     if data.event_id:
-        payload["events_id"] = data.event_id
+        contact = await tybot.create(CONTACTS_TABLE_ID, {
+            "first_name": data.firstname,
+            "last_name": data.lastname,
+            "email": data.email,
+            "events_id": data.event_id,
+            "source": data.source,
+        })
+        payload["contacts_id"] = contact.get("id") or contact.get("Id")
     result = await tybot.create(VISITEURS_TABLE_ID, payload)
     return {"status": "registered", "id": result.get("id") or result.get("Id")}
 
@@ -93,7 +103,16 @@ async def register_exhibitor(data: ExhibitorRegistration, tybot: TybotClient = D
     if data.phone:
         payload["phone"] = data.phone
     if data.event_id:
-        payload["events_id"] = data.event_id
+        contact_fields = {
+            "first_name": first or data.company_name,
+            "email": data.email,
+            "events_id": data.event_id,
+            "source": data.source,
+        }
+        if last:
+            contact_fields["last_name"] = last
+        contact_row = await tybot.create(CONTACTS_TABLE_ID, contact_fields)
+        payload["contacts_id"] = contact_row.get("id") or contact_row.get("Id")
     result = await tybot.create(EXPOSANTS_TABLE_ID, payload)
     return {"status": "registered", "id": result.get("id") or result.get("Id")}
 

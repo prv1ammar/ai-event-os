@@ -41,7 +41,7 @@ interface OrderRecord   { id: number; total?: string | number; status?: string; 
 interface EventRecord   {
   id: number; name: string; status?: string; event_type?: string; is_free?: boolean;
   start_date?: string; end_date?: string;
-  venues?: Array<{ id: number; name?: string }>;
+  venue?: { id: number; name?: string } | null;
   [k: string]: unknown;
 }
 
@@ -262,7 +262,7 @@ function Rapports() {
               <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Lieu</p>
               <p className="font-medium text-foreground mt-0.5 text-sm flex items-center gap-1">
                 <MapPin className="h-3 w-3 text-muted-foreground shrink-0" />
-                {selectedEvent.venues?.[0]?.name ?? "—"}
+                {selectedEvent.venue?.name ?? "—"}
               </p>
             </div>
             <div className="flex items-center justify-between">
