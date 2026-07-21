@@ -10,7 +10,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { AppHeader } from "@/components/AppHeader";
 import { EventProvider } from "@/lib/event-context";
-import { getToken } from "@/lib/auth";
+import { getToken, getUser } from "@/lib/auth";
+import { canAccess } from "@/lib/permissions";
 
 function NotFoundComponent() {
   return (
@@ -77,10 +78,18 @@ function RootComponent() {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isLoginPage = currentPath === "/login";
   const token = getToken();
+  const user = getUser();
+  const userRole = user?.role;
 
-  // No token + not on login → send to login via hard redirect (reliable across all router versions)
+  // No token → force login
   if (!token && !isLoginPage) {
     window.location.replace("/login");
+    return null;
+  }
+
+  // Logged in but current path not allowed for this role → redirect to dashboard
+  if (token && !isLoginPage && !canAccess(userRole, currentPath)) {
+    window.location.replace("/");
     return null;
   }
 

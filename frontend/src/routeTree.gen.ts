@@ -25,6 +25,8 @@ import { Route as ExposantsRouteImport } from './routes/exposants'
 import { Route as EvenementsRouteImport } from './routes/evenements'
 import { Route as BadgesRouteImport } from './routes/badges'
 import { Route as AutomatisationRouteImport } from './routes/automatisation'
+import { Route as TrafficRouteImport } from './routes/traffic'
+import { Route as AccessManagementRouteImport } from './routes/access-management'
 import { Route as IndexRouteImport } from './routes/index'
 
 const VisiteursRoute = VisiteursRouteImport.update({
@@ -107,6 +109,16 @@ const AutomatisationRoute = AutomatisationRouteImport.update({
   path: '/automatisation',
   getParentRoute: () => rootRouteImport,
 } as any)
+const TrafficRoute = TrafficRouteImport.update({
+  id: '/traffic',
+  path: '/traffic',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AccessManagementRoute = AccessManagementRouteImport.update({
+  id: '/access-management',
+  path: '/access-management',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -131,6 +143,8 @@ export interface FileRoutesByFullPath {
   '/rapports': typeof RapportsRoute
   '/scanner': typeof ScannerRoute
   '/visiteurs': typeof VisiteursRoute
+  '/traffic': typeof TrafficRoute
+  '/access-management': typeof AccessManagementRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -150,6 +164,8 @@ export interface FileRoutesByTo {
   '/rapports': typeof RapportsRoute
   '/scanner': typeof ScannerRoute
   '/visiteurs': typeof VisiteursRoute
+  '/traffic': typeof TrafficRoute
+  '/access-management': typeof AccessManagementRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -170,6 +186,8 @@ export interface FileRoutesById {
   '/rapports': typeof RapportsRoute
   '/scanner': typeof ScannerRoute
   '/visiteurs': typeof VisiteursRoute
+  '/traffic': typeof TrafficRoute
+  '/access-management': typeof AccessManagementRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -191,6 +209,8 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/scanner'
     | '/visiteurs'
+    | '/traffic'
+    | '/access-management'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -210,6 +230,8 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/scanner'
     | '/visiteurs'
+    | '/traffic'
+    | '/access-management'
   id:
     | '__root__'
     | '/'
@@ -229,6 +251,8 @@ export interface FileRouteTypes {
     | '/rapports'
     | '/scanner'
     | '/visiteurs'
+    | '/traffic'
+    | '/access-management'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -249,6 +273,8 @@ export interface RootRouteChildren {
   RapportsRoute: typeof RapportsRoute
   ScannerRoute: typeof ScannerRoute
   VisiteursRoute: typeof VisiteursRoute
+  TrafficRoute: typeof TrafficRoute
+  AccessManagementRoute: typeof AccessManagementRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -365,6 +391,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AutomatisationRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/traffic': {
+      id: '/traffic'
+      path: '/traffic'
+      fullPath: '/traffic'
+      preLoaderRoute: typeof TrafficRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/access-management': {
+      id: '/access-management'
+      path: '/access-management'
+      fullPath: '/access-management'
+      preLoaderRoute: typeof AccessManagementRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -393,6 +433,8 @@ const rootRouteChildren: RootRouteChildren = {
   RapportsRoute: RapportsRoute,
   ScannerRoute: ScannerRoute,
   VisiteursRoute: VisiteursRoute,
+  TrafficRoute: TrafficRoute,
+  AccessManagementRoute: AccessManagementRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
